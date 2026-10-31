@@ -224,7 +224,27 @@ export default function ProductsPage() {
 
       {/* Products list cards */}
       <div className="space-y-4">
-        {filteredProducts.length === 0 ? (
+        {loading ? (
+          Array.from({ length: 3 }).map((_, i) => (
+            <div
+              key={i}
+              className="p-5 rounded-xl bg-[#0d111a] border border-[#242f44] space-y-4 animate-pulse"
+            >
+              <div className="flex items-start justify-between">
+                <div className="space-y-2">
+                  <div className="h-5 w-44 bg-[#182030] rounded" />
+                  <div className="h-3 w-28 bg-[#10141f] rounded" />
+                </div>
+                <div className="h-6 w-24 bg-[#182030] rounded" />
+              </div>
+              <div className="grid grid-cols-3 gap-3 pt-2">
+                <div className="h-10 bg-[#151b28] rounded-lg" />
+                <div className="h-10 bg-[#151b28] rounded-lg" />
+                <div className="h-10 bg-[#151b28] rounded-lg" />
+              </div>
+            </div>
+          ))
+        ) : filteredProducts.length === 0 ? (
           <div className="p-8 text-center text-slate-400 rounded-xl bg-[#0c1017] border border-[#242f44]">
             No products match your search or category filter.
           </div>

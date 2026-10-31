@@ -80,7 +80,7 @@ export default function PlansPage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-extrabold tracking-tight text-white">
-              Billing Plans & Schedule Rules
+              Billing Plans &amp; Schedule Rules
             </h1>
             <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-[#151b28] border border-[#242f44] text-slate-300">
               {plans.length} Configured Plans
@@ -103,39 +103,61 @@ export default function PlansPage() {
 
       {/* Grid of Plans */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {plans.map((plan) => (
-          <Card key={plan.id} surface="dark" className="border border-[#242f44] space-y-4">
-            <div className="flex items-start justify-between gap-2 border-b border-[#242f44] pb-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-base font-bold text-white tracking-tight">{plan.nickname}</h2>
-                  {plan.active ? (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950/60 text-emerald-300 border border-emerald-800">
-                      Active
-                    </span>
-                  ) : (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-950/60 text-rose-300 border border-rose-800">
-                      Discontinued
-                    </span>
-                  )}
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className="p-5 rounded-xl bg-[#0d111a] border border-[#242f44] space-y-4 animate-pulse"
+            >
+              <div className="flex items-start justify-between">
+                <div className="space-y-2">
+                  <div className="h-5 w-36 bg-[#182030] rounded" />
+                  <div className="h-3 w-24 bg-[#10141f] rounded" />
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5">{plan.productName}</p>
+                <div className="h-6 w-20 bg-[#182030] rounded" />
               </div>
-
-              <div className="text-right">
-                <span className="text-lg font-extrabold font-mono text-[#fcee21]">
-                  {formatMoney(plan.unitAmount, plan.currency)}
-                </span>
-                <span className="block text-[11px] font-mono text-slate-400 capitalize">
-                  per {plan.billingInterval}
-                </span>
-              </div>
+              <div className="h-16 bg-[#151b28] rounded-lg" />
             </div>
+          ))
+        ) : plans.length === 0 ? (
+          <div className="col-span-2 p-8 text-center text-slate-400 rounded-xl bg-[#0c1017] border border-[#242f44]">
+            No pricing plans configured yet.
+          </div>
+        ) : (
+          plans.map((plan) => (
+            <Card key={plan.id} surface="dark" className="border border-[#242f44] space-y-4">
+              <div className="flex items-start justify-between gap-2 border-b border-[#242f44] pb-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base font-bold text-white tracking-tight">{plan.nickname}</h2>
+                    {plan.active ? (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950/60 text-emerald-300 border border-emerald-800">
+                        Active
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-950/60 text-rose-300 border border-rose-800">
+                        Discontinued
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">{plan.productName}</p>
+                </div>
 
-            {/* Rule Summary */}
-            <PlanRuleSummary plan={plan} />
-          </Card>
-        ))}
+                <div className="text-right">
+                  <span className="text-lg font-extrabold font-mono text-[#fcee21]">
+                    {formatMoney(plan.unitAmount, plan.currency)}
+                  </span>
+                  <span className="block text-[11px] font-mono text-slate-400 capitalize">
+                    per {plan.billingInterval}
+                  </span>
+                </div>
+              </div>
+
+              {/* Rule Summary */}
+              <PlanRuleSummary plan={plan} />
+            </Card>
+          ))
+        )}
       </div>
 
       {/* Modal: Create Plan */}
