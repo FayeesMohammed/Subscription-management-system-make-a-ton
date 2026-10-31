@@ -192,7 +192,7 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
         </div>
 
         {/* Navigation items */}
-        <nav className="flex-1 overflow-y-auto px-3 py-2">{renderNavLinks()}</nav>
+        <nav className="flex-1 overflow-y-auto no-scrollbar px-3 py-2">{renderNavLinks()}</nav>
 
         {/* Customer Portal Preview Link & Health */}
         <div className="p-3 border-t border-[#1f283d] bg-[#08090d] space-y-2">

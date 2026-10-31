@@ -101,7 +101,7 @@ export const FloatingDockNav: React.FC<FloatingDockNavProps> = ({
   return (
     <nav
       aria-label="Quick Top Dock Navigation"
-      className={`inline-flex items-center p-1 sm:p-1.5 rounded-2xl bg-[#0f1420]/95 backdrop-blur-xl border border-[#232d42]/90 shadow-2xl shadow-black/80 gap-1 select-none overflow-x-auto max-w-full ${className}`}
+      className={`inline-flex items-center p-1 sm:p-1.5 rounded-2xl bg-[#0f1420]/95 backdrop-blur-xl border border-[#232d42]/90 shadow-2xl shadow-black/80 gap-1 select-none overflow-x-auto no-scrollbar max-w-full ${className}`}
     >
       {items.map((item) => {
         const Icon = item.icon;
