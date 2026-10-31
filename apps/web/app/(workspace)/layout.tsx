@@ -263,13 +263,7 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
 
           {/* Right Header Controls */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* System SLA Badge */}
-            <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#0d121c] border border-[#1f283d] text-[11px] font-mono text-slate-300">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span className="text-emerald-400 font-bold">SYSTEM SLA 99.98%</span>
-              <span className="text-slate-500">•</span>
-              <span className="text-slate-400">&lt;180ms Latency</span>
-            </div>
+            
 
             {/* Alert Indicator */}
             {alertsCount > 0 && (
