@@ -6,12 +6,15 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "node --experimental-strip-types --test test/*.test.ts"
   },
   "dependencies": {
     "@brightloop/financial-core": "workspace:*",
     "@brightloop/shared-types": "workspace:*",
+    "@brightloop/ui": "workspace:*",
     "@brightloop/validation": "workspace:*",
+    "decimal.js": "^10.6.0",
     "lucide-react": "^0.475.0",
     "next": "15.1.7",
     "react": "^19.0.0",

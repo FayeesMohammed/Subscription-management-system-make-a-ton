@@ -309,9 +309,15 @@ importers:
       '@brightloop/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
+      '@brightloop/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@brightloop/validation':
         specifier: workspace:*
         version: link:../../packages/validation
+      decimal.js:
+        specifier: ^10.6.0
+        version: 10.6.0
       lucide-react:
         specifier: ^0.475.0
         version: 0.475.0(react@19.3.1)
@@ -362,6 +368,28 @@ importers:
 
   packages/shared-types:
     devDependencies:
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
+  packages/ui:
+    dependencies:
+      lucide-react:
+        specifier: ^0.475.0
+        version: 0.475.0(react@19.3.1)
+      react:
+        specifier: ^19.0.0
+        version: 19.3.1
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.3.1(react@19.3.1)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.8
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.0.3
+        version: 19.3.0(@types/react@19.3.0)
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
