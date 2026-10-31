@@ -1,0 +1,512 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TenantRole {
+  OWNER
+  ADMIN
+  FINANCE
+  MEMBER
+  VIEWER
+}
+
+enum SubscriptionStatus {
+  incomplete
+  trialing
+  active
+  past_due
+  paused
+  canceled
+  unpaid
+}
+
+enum InvoiceStatus {
+  draft
+  finalized
+  paid
+  void
+  uncollectible
+}
+
+enum PaymentStatus {
+  created
+  pending
+  authorized
+  succeeded
+  failed
+  partially_refunded
+  refunded
+}
+
+enum BillingInterval {
+  day
+  week
+  month
+  year
+}
+
+enum PricingModel {
+  fixed_recurring
+  per_unit
+  usage_metered
+  tiered_graduated
+  tiered_volume
+}
+
+// -------------------------------------------------------------
+// Identity & Tenancy
+// -------------------------------------------------------------
+
+model User {
+  id                  String         @id @default(uuid()) @db.Uuid
+  email               String         @unique
+  passwordHash        String
+  firstName           String
+  lastName            String
+  isPlatformSuperuser Boolean        @default(false)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  memberships         TenantMember[]
+  sessions            Session[]
+  refreshTokens       RefreshToken[]
+
+  @@map("users")
+}
+
+model Tenant {
+  id        String         @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String         @unique
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  members   TenantMember[]
+
+  @@map("tenants")
+}
+
+model TenantMember {
+  id        String     @id @default(uuid()) @db.Uuid
+  tenantId  String     @db.Uuid
+  userId    String     @db.Uuid
+  role      TenantRole @default(MEMBER)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("tenant_members")
+}
+
+model Session {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  tenantId  String?  @db.Uuid
+  token     String   @unique
+  userAgent String?
+  ipAddress String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  tokenHash String   @unique
+  familyId  String   @db.Uuid
+  isRevoked Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, familyId])
+  @@map("refresh_tokens")
+}
+
+// -------------------------------------------------------------
+// Customer & Catalog (Tenant Scoped)
+// -------------------------------------------------------------
+
+model Customer {
+  id           String         @id @default(uuid()) @db.Uuid
+  tenantId     String         @db.Uuid
+  name         String
+  email        String
+  phone        String?
+  taxNumber    String?        // GSTIN or Tax Identification Number
+  currency     String         @default("INR")
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  state        String?
+  postalCode   String?
+  country      String         @default("IN")
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  subscriptions Subscription[]
+  invoices      Invoice[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, email])
+  @@map("customers")
+}
+
+model Product {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  prices      Price[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+  @@map("products")
+}
+
+model Price {
+  id                   String           @id @default(uuid()) @db.Uuid
+  tenantId             String           @db.Uuid
+  productId            String           @db.Uuid
+  nickname             String?
+  currency             String           @default("INR")
+  unitAmount           Decimal          @db.Decimal(18, 4)
+  billingInterval      BillingInterval  @default(month)
+  billingIntervalCount Int              @default(1)
+  pricingModel         PricingModel     @default(fixed_recurring)
+  taxRatePercentage    Decimal          @default(18.0) @db.Decimal(5, 2)
+  active               Boolean          @default(true)
+  version              Int              @default(1)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  product              Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  subscriptionItems    SubscriptionItem[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, productId])
+  @@map("prices")
+}
+
+// -------------------------------------------------------------
+// Subscriptions & Billing (Tenant Scoped)
+// -------------------------------------------------------------
+
+model Subscription {
+  id                 String             @id @default(uuid()) @db.Uuid
+  tenantId           String             @db.Uuid
+  customerId         String             @db.Uuid
+  status             SubscriptionStatus @default(incomplete)
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean            @default(false)
+  canceledAt         DateTime?
+  trialStart         DateTime?
+  trialEnd           DateTime?
+  pausedAt           DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  customer           Customer           @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  items              SubscriptionItem[]
+  statusLogs         SubscriptionStatusLog[]
+  invoices           Invoice[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, customerId])
+  @@index([tenantId, status])
+  @@map("subscriptions")
+}
+
+model SubscriptionItem {
+  id             String       @id @default(uuid()) @db.Uuid
+  tenantId       String       @db.Uuid
+  subscriptionId String       @db.Uuid
+  priceId        String       @db.Uuid
+  quantity       Int          @default(1)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  price          Price        @relation(fields: [priceId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, subscriptionId])
+  @@map("subscription_items")
+}
+
+model SubscriptionStatusLog {
+  id             String             @id @default(uuid()) @db.Uuid
+  tenantId       String             @db.Uuid
+  subscriptionId String             @db.Uuid
+  fromStatus     SubscriptionStatus
+  toStatus       SubscriptionStatus
+  reason         String?
+  actor          String?
+  createdAt      DateTime           @default(now())
+
+  subscription   Subscription       @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, subscriptionId])
+  @@map("subscription_status_logs")
+}
+
+model InvoiceSequence {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  prefix        String   @default("INV")
+  year          Int
+  currentNumber Int      @default(0)
+  updatedAt     DateTime @updatedAt
+
+  @@unique([tenantId, prefix, year])
+  @@map("invoice_sequences")
+}
+
+model Invoice {
+  id             String        @id @default(uuid()) @db.Uuid
+  tenantId       String        @db.Uuid
+  customerId     String        @db.Uuid
+  subscriptionId String?       @db.Uuid
+  invoiceNumber  String
+  status         InvoiceStatus @default(draft)
+  currency       String        @default("INR")
+  subtotal       Decimal       @db.Decimal(18, 4)
+  discountTotal  Decimal       @default(0) @db.Decimal(18, 4)
+  taxTotal       Decimal       @db.Decimal(18, 4)
+  total          Decimal       @db.Decimal(18, 4)
+  amountPaid     Decimal       @default(0) @db.Decimal(18, 4)
+  amountDue      Decimal       @db.Decimal(18, 4)
+  dueDate        DateTime
+  periodStart    DateTime
+  periodEnd      DateTime
+  finalizedAt    DateTime?
+  paidAt         DateTime?
+  idempotencyKey String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  customer       Customer       @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  subscription   Subscription?  @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  lines          InvoiceLine[]
+  creditNotes    CreditNote[]
+  paymentAttempts PaymentAttempt[]
+  payments       Payment[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, invoiceNumber])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, customerId])
+  @@index([tenantId, status])
+  @@map("invoices")
+}
+
+model InvoiceLine {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @db.Uuid
+  invoiceId      String   @db.Uuid
+  description    String
+  unitPrice      Decimal  @db.Decimal(18, 4)
+  quantity       Decimal  @db.Decimal(18, 4)
+  grossAmount    Decimal  @db.Decimal(18, 4)
+  discountAmount Decimal  @default(0) @db.Decimal(18, 4)
+  netAmount      Decimal  @db.Decimal(18, 4)
+  taxRate        Decimal  @db.Decimal(5, 2)
+  taxAmount      Decimal  @db.Decimal(18, 4)
+  totalAmount    Decimal  @db.Decimal(18, 4)
+  priceSnapshot  Json?
+  createdAt      DateTime @default(now())
+
+  invoice        Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, invoiceId])
+  @@map("invoice_lines")
+}
+
+model CreditNote {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @db.Uuid
+  invoiceId        String   @db.Uuid
+  creditNoteNumber String
+  reason           String
+  amount           Decimal  @db.Decimal(18, 4)
+  currency         String   @default("INR")
+  createdAt        DateTime @default(now())
+
+  invoice          Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, creditNoteNumber])
+  @@map("credit_notes")
+}
+
+// -------------------------------------------------------------
+// Payments & Webhooks
+// -------------------------------------------------------------
+
+model PaymentAttempt {
+  id             String        @id @default(uuid()) @db.Uuid
+  tenantId       String        @db.Uuid
+  invoiceId      String        @db.Uuid
+  gateway        String        @default("razorpay")
+  gatewayOrderId String?
+  amount         Decimal       @db.Decimal(18, 4)
+  currency       String        @default("INR")
+  status         PaymentStatus @default(created)
+  errorMessage   String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  invoice        Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, invoiceId])
+  @@map("payment_attempts")
+}
+
+model Payment {
+  id               String        @id @default(uuid()) @db.Uuid
+  tenantId         String        @db.Uuid
+  invoiceId        String        @db.Uuid
+  paymentAttemptId String?       @db.Uuid
+  gateway          String        @default("razorpay")
+  gatewayPaymentId String
+  amount           Decimal       @db.Decimal(18, 4)
+  currency         String        @default("INR")
+  status           PaymentStatus @default(succeeded)
+  fee              Decimal?      @db.Decimal(18, 4)
+  paidAt           DateTime      @default(now())
+  createdAt        DateTime      @default(now())
+
+  invoice          Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, gatewayPaymentId])
+  @@index([tenantId, invoiceId])
+  @@map("payments")
+}
+
+model WebhookEvent {
+  id                String    @id @default(uuid()) @db.Uuid
+  tenantId          String?   @db.Uuid
+  gateway           String    @default("razorpay")
+  gatewayEventId    String
+  eventType         String
+  payload           Json
+  signatureVerified Boolean   @default(false)
+  status            String    @default("received") // received, processing, processed, failed, ignored
+  failureReason     String?
+  receivedAt        DateTime  @default(now())
+  processedAt       DateTime?
+
+  @@unique([gateway, gatewayEventId])
+  @@index([gateway, status])
+  @@map("webhook_events")
+}
+
+model OutboxEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String?   @db.Uuid
+  eventType   String
+  payload     Json
+  status      String    @default("pending") // pending, processing, published, failed
+  attempts    Int       @default(0)
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([status, createdAt])
+  @@map("outbox_events")
+}
+
+model IdempotencyKey {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @db.Uuid
+  key            String
+  endpoint       String
+  requestHash    String
+  responseStatus Int?
+  responseBody   Json?
+  createdAt      DateTime  @default(now())
+  lockedUntil    DateTime?
+
+  @@unique([tenantId, key])
+  @@map("idempotency_keys")
+}
+
+// -------------------------------------------------------------
+// Usage & Metering (Tenant Scoped)
+// -------------------------------------------------------------
+
+model Meter {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @db.Uuid
+  code            String
+  name            String
+  unit            String
+  aggregationType String   @default("sum")
+  createdAt       DateTime @default(now())
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, code])
+  @@map("meters")
+}
+
+model UsageEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @db.Uuid
+  meterId        String   @db.Uuid
+  customerId     String   @db.Uuid
+  idempotencyKey String
+  quantity       Decimal  @db.Decimal(18, 4)
+  timestamp      DateTime @default(now())
+  receivedAt     DateTime @default(now())
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, meterId, customerId])
+  @@map("usage_events")
+}
+
+// -------------------------------------------------------------
+// Audit Log (Tenant Scoped)
+// -------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  actorId    String?  @db.Uuid
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@unique([tenantId, id])
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, createdAt])
+  @@map("audit_logs")
+}
