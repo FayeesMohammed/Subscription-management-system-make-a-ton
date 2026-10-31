@@ -13,11 +13,15 @@ import { TenantRole, TenantContext } from '@brightloop/shared-types';
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const ROLE_HIERARCHY: Record<TenantRole, number> = {
-  [TenantRole.VIEWER]: 1,
-  [TenantRole.MEMBER]: 2,
-  [TenantRole.FINANCE]: 3,
-  [TenantRole.ADMIN]: 4,
-  [TenantRole.OWNER]: 5,
+  [TenantRole.CUSTOMER_PORTAL]: 1,
+  [TenantRole.VIEWER]: 2,
+  [TenantRole.MEMBER]: 3,
+  [TenantRole.STAFF]: 4,
+  [TenantRole.TENANT_STAFF]: 4,
+  [TenantRole.FINANCE]: 5,
+  [TenantRole.ADMIN]: 6,
+  [TenantRole.TENANT_ADMIN]: 6,
+  [TenantRole.OWNER]: 7,
 };
 
 @Injectable()
@@ -62,7 +66,7 @@ export class TenantGuard implements CanActivate {
 
     if (requiredRoles && requiredRoles.length > 0) {
       const userLevel = ROLE_HIERARCHY[membership.role as TenantRole] || 0;
-      const isAuthorized = requiredRoles.some((role) => userLevel >= ROLE_HIERARCHY[role]);
+      const isAuthorized = requiredRoles.some((role) => userLevel >= (ROLE_HIERARCHY[role] || 0));
       if (!isAuthorized) {
         throw new ForbiddenException(`Insufficient permissions. Required roles: ${requiredRoles.join(', ')}`);
       }

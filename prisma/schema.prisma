@@ -10,27 +10,54 @@ datasource db {
 enum TenantRole {
   OWNER
   ADMIN
+  TENANT_ADMIN
+  STAFF
+  TENANT_STAFF
   FINANCE
   MEMBER
   VIEWER
+  CUSTOMER_PORTAL
+}
+
+enum ProductType {
+  SOFTWARE
+  ADD_ON
+  PHYSICAL
 }
 
 enum SubscriptionStatus {
+  draft
+  quotation
+  confirmed
   incomplete
   trialing
   active
   past_due
   paused
+  closed
   canceled
   unpaid
 }
 
 enum InvoiceStatus {
   draft
+  confirmed
   finalized
   paid
   void
   uncollectible
+}
+
+enum PaymentMethod {
+  GATEWAY
+  BANK_TRANSFER
+  CASH
+  CHEQUE
+}
+
+enum DiscountType {
+  FIXED_AMOUNT
+  PERCENTAGE
 }
 
 enum PaymentStatus {
@@ -63,18 +90,20 @@ enum PricingModel {
 // -------------------------------------------------------------
 
 model User {
-  id                  String         @id @default(uuid()) @db.Uuid
-  email               String         @unique
-  passwordHash        String
-  firstName           String
-  lastName            String
-  isPlatformSuperuser Boolean        @default(false)
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
+  id                   String         @id @default(uuid()) @db.Uuid
+  email                String         @unique
+  passwordHash         String
+  firstName            String
+  lastName             String
+  isPlatformSuperuser  Boolean        @default(false)
+  passwordResetToken   String?        @unique
+  passwordResetExpires DateTime?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 
-  memberships         TenantMember[]
-  sessions            Session[]
-  refreshTokens       RefreshToken[]
+  memberships          TenantMember[]
+  sessions             Session[]
+  refreshTokens        RefreshToken[]
 
   @@map("users")
 }
@@ -169,25 +198,48 @@ model Customer {
 }
 
 model Product {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @db.Uuid
+  id          String           @id @default(uuid()) @db.Uuid
+  tenantId    String           @db.Uuid
   name        String
+  type        ProductType      @default(SOFTWARE)
+  salesPrice  Decimal          @default(0) @db.Decimal(18, 4)
+  costPrice   Decimal          @default(0) @db.Decimal(18, 4)
+  notes       String?
   description String?
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  active      Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
   prices      Price[]
+  variants    ProductVariant[]
 
   @@unique([tenantId, id])
   @@index([tenantId])
   @@map("products")
 }
 
+model ProductVariant {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @db.Uuid
+  productId       String   @db.Uuid
+  name            String
+  attributeName   String
+  attributeValue  String
+  priceAdjustment Decimal  @default(0) @db.Decimal(18, 4)
+  createdAt       DateTime @default(now())
+
+  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, productId])
+  @@map("product_variants")
+}
+
 model Price {
   id                   String           @id @default(uuid()) @db.Uuid
   tenantId             String           @db.Uuid
   productId            String           @db.Uuid
+  variantId            String?          @db.Uuid
   nickname             String?
   currency             String           @default("INR")
   unitAmount           Decimal          @db.Decimal(18, 4)
@@ -195,6 +247,12 @@ model Price {
   billingIntervalCount Int              @default(1)
   pricingModel         PricingModel     @default(fixed_recurring)
   taxRatePercentage    Decimal          @default(18.0) @db.Decimal(5, 2)
+  minQuantity          Int              @default(1)
+  startDate            DateTime?
+  endDate              DateTime?
+  autoClose            Boolean          @default(false)
+  allowPause           Boolean          @default(true)
+  allowEarlyClose      Boolean          @default(true)
   active               Boolean          @default(true)
   version              Int              @default(1)
   createdAt            DateTime         @default(now())
@@ -209,6 +267,64 @@ model Price {
 }
 
 // -------------------------------------------------------------
+// Quotation Templates
+// -------------------------------------------------------------
+
+model QuotationTemplate {
+  id           String                  @id @default(uuid()) @db.Uuid
+  tenantId     String                  @db.Uuid
+  name         String
+  validForDays Int                     @default(30)
+  createdAt    DateTime                @default(now())
+
+  lines        QuotationTemplateLine[]
+
+  @@unique([tenantId, id])
+  @@map("quotation_templates")
+}
+
+model QuotationTemplateLine {
+  id         String            @id @default(uuid()) @db.Uuid
+  tenantId   String            @db.Uuid
+  templateId String            @db.Uuid
+  productId  String            @db.Uuid
+  variantId  String?           @db.Uuid
+  quantity   Int               @default(1)
+
+  template   QuotationTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, templateId])
+  @@map("quotation_template_lines")
+}
+
+// -------------------------------------------------------------
+// Discounts Engine
+// -------------------------------------------------------------
+
+model Discount {
+  id                String       @id @default(uuid()) @db.Uuid
+  tenantId          String       @db.Uuid
+  code              String
+  name              String
+  type              DiscountType
+  value             Decimal      @db.Decimal(18, 4)
+  minPurchaseAmount Decimal      @default(0) @db.Decimal(18, 4)
+  minQuantity       Int          @default(1)
+  validFrom         DateTime?
+  validTo           DateTime?
+  maxUsageLimit     Int?
+  currentUsageCount Int          @default(0)
+  productId         String?      @db.Uuid
+  createdAt         DateTime     @default(now())
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, code])
+  @@index([tenantId, code])
+  @@map("discounts")
+}
+
+// -------------------------------------------------------------
 // Subscriptions & Billing (Tenant Scoped)
 // -------------------------------------------------------------
 
@@ -216,11 +332,14 @@ model Subscription {
   id                 String             @id @default(uuid()) @db.Uuid
   tenantId           String             @db.Uuid
   customerId         String             @db.Uuid
-  status             SubscriptionStatus @default(incomplete)
+  status             SubscriptionStatus @default(active)
   currentPeriodStart DateTime
   currentPeriodEnd   DateTime
   cancelAtPeriodEnd  Boolean            @default(false)
   canceledAt         DateTime?
+  expiryDate         DateTime?          // For quotations
+  autoClose          Boolean            @default(false)
+  appliedDiscountId  String?            @db.Uuid
   trialStart         DateTime?
   trialEnd           DateTime?
   pausedAt           DateTime?
@@ -243,6 +362,7 @@ model SubscriptionItem {
   tenantId       String       @db.Uuid
   subscriptionId String       @db.Uuid
   priceId        String       @db.Uuid
+  variantId      String?      @db.Uuid
   quantity       Int          @default(1)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -307,18 +427,18 @@ model Invoice {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
-  customer       Customer       @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  subscription   Subscription?  @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
-  lines          InvoiceLine[]
-  creditNotes    CreditNote[]
+  customer        Customer        @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  subscription    Subscription?   @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  lines           InvoiceLine[]
+  creditNotes     CreditNote[]
   paymentAttempts PaymentAttempt[]
-  payments       Payment[]
+  payments        Payment[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, invoiceNumber])
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, customerId])
-  @@index([tenantId, status])
+  @@index([tenantId, status, dueDate])
   @@map("invoices")
 }
 
@@ -392,19 +512,23 @@ model Payment {
   invoiceId        String        @db.Uuid
   paymentAttemptId String?       @db.Uuid
   gateway          String        @default("razorpay")
-  gatewayPaymentId String
+  gatewayPaymentId String?
+  paymentMethod    PaymentMethod @default(GATEWAY)
   amount           Decimal       @db.Decimal(18, 4)
   currency         String        @default("INR")
   status           PaymentStatus @default(succeeded)
   fee              Decimal?      @db.Decimal(18, 4)
+  referenceNote    String?
+  recordedBy       String?       @db.Uuid
+  paymentDate      DateTime      @default(now())
   paidAt           DateTime      @default(now())
   createdAt        DateTime      @default(now())
 
   invoice          Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
 
   @@unique([tenantId, id])
-  @@unique([tenantId, gatewayPaymentId])
   @@index([tenantId, invoiceId])
+  @@index([tenantId, paymentDate])
   @@map("payments")
 }
 

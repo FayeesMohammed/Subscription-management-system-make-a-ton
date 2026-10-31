@@ -7,6 +7,8 @@ import {
   Query,
   UseGuards,
   Patch,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { SubscriptionsService } from './subscriptions.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -25,6 +27,57 @@ export class SubscriptionsController {
     @Body() body: unknown,
   ) {
     return this.subscriptionsService.create(tenant.tenantId, body);
+  }
+
+  // GAP-05: Quotation templates
+  @Post('templates')
+  async createTemplate(
+    @CurrentTenant() tenant: TenantContext,
+    @Body() body: unknown,
+  ) {
+    return this.subscriptionsService.createTemplate(tenant.tenantId, body);
+  }
+
+  @Get('templates')
+  async listTemplates(@CurrentTenant() tenant: TenantContext) {
+    return this.subscriptionsService.listTemplates(tenant.tenantId);
+  }
+
+  // GAP-05: Sales Quotations
+  @Post('quotes')
+  async createQuotation(
+    @CurrentTenant() tenant: TenantContext,
+    @Body() body: unknown,
+  ) {
+    return this.subscriptionsService.createQuotation(tenant.tenantId, body);
+  }
+
+  @Post(':id/confirm-quote')
+  @HttpCode(HttpStatus.OK)
+  async confirmQuotation(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') id: string,
+  ) {
+    return this.subscriptionsService.confirmQuotation(tenant.tenantId, id);
+  }
+
+  @Post(':id/activate')
+  @HttpCode(HttpStatus.OK)
+  async activateSubscription(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') id: string,
+  ) {
+    return this.subscriptionsService.activateSubscription(tenant.tenantId, id);
+  }
+
+  @Post(':id/close')
+  @HttpCode(HttpStatus.OK)
+  async closeSubscription(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Body('reason') reason?: string,
+  ) {
+    return this.subscriptionsService.closeSubscription(tenant.tenantId, id, reason);
   }
 
   @Get()

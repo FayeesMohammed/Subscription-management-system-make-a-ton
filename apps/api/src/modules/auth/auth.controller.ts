@@ -27,6 +27,18 @@ export class AuthController {
     return this.authService.login(body);
   }
 
+  @Post('password-reset-request')
+  @HttpCode(HttpStatus.OK)
+  async requestPasswordReset(@Body() body: unknown) {
+    return this.authService.requestPasswordReset(body);
+  }
+
+  @Post('password-reset-confirm')
+  @HttpCode(HttpStatus.OK)
+  async confirmPasswordReset(@Body() body: unknown) {
+    return this.authService.confirmPasswordReset(body);
+  }
+
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   async refresh(@Body('refreshToken') refreshToken: string) {

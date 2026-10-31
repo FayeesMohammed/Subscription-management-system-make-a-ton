@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Param,
   Query,
   Body,
   UseGuards,
@@ -28,6 +29,24 @@ export class CatalogController {
   @Get('products')
   async findAllProducts(@CurrentTenant() tenant: TenantContext) {
     return this.catalogService.findAllProducts(tenant.tenantId);
+  }
+
+  // GAP-03: Variant endpoints
+  @Post('products/:id/variants')
+  async createVariant(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') productId: string,
+    @Body() body: unknown,
+  ) {
+    return this.catalogService.createVariant(tenant.tenantId, productId, body);
+  }
+
+  @Get('products/:id/variants')
+  async listVariants(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') productId: string,
+  ) {
+    return this.catalogService.listVariants(tenant.tenantId, productId);
   }
 
   @Post('prices')

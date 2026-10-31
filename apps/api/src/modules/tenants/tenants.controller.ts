@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Param,
   Body,
   UseGuards,
 } from '@nestjs/common';
@@ -43,14 +44,31 @@ export class TenantsController {
     return this.tenantsService.getMembers(tenantContext.tenantId);
   }
 
+  // GAP-02: Admin-only staff/member creation
   @Post('current/members')
   @UseGuards(TenantGuard)
-  @Roles(TenantRole.ADMIN)
+  @Roles(TenantRole.TENANT_ADMIN, TenantRole.ADMIN, TenantRole.OWNER)
   async addMember(
     @CurrentTenant() tenantContext: TenantContext,
     @Body('email') email: string,
     @Body('role') role: TenantRole,
   ) {
     return this.tenantsService.addMember(tenantContext.tenantId, email, role || TenantRole.MEMBER);
+  }
+
+  // GAP-02: Explicit staff endpoint POST /tenants/:id/staff
+  @Post(':id/staff')
+  @UseGuards(TenantGuard)
+  @Roles(TenantRole.TENANT_ADMIN, TenantRole.ADMIN, TenantRole.OWNER)
+  async addStaff(
+    @CurrentTenant() tenantContext: TenantContext,
+    @Body('email') email: string,
+    @Body('role') role?: TenantRole,
+  ) {
+    return this.tenantsService.addMember(
+      tenantContext.tenantId,
+      email,
+      role || TenantRole.TENANT_STAFF,
+    );
   }
 }

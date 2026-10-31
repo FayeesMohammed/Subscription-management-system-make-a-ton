@@ -4,9 +4,10 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { TenantContextService } from '../../database/tenant-context.service';
-import { InvoiceStatus } from '@brightloop/shared-types';
+import { InvoiceStatus, PaymentMethod, PaymentStatus } from '@brightloop/shared-types';
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@brightloop/financial-core';
+import { RecordManualPaymentSchema } from '@brightloop/validation';
 
 @Injectable()
 export class InvoicesService {
@@ -48,6 +49,125 @@ export class InvoicesService {
       }
 
       return invoice;
+    });
+  }
+
+  // GAP-06: Confirm draft invoice -> locks financial snapshot
+  async confirmInvoice(tenantId: string, id: string) {
+    return this.tenantContext.withTenant(tenantId, async (tx) => {
+      const invoice = await tx.invoice.findUniqueOrThrow({
+        where: { tenantId_id: { tenantId, id } },
+      });
+
+      if (invoice.status === InvoiceStatus.FINALIZED || invoice.status === InvoiceStatus.CONFIRMED) {
+        return invoice;
+      }
+
+      if (invoice.status !== InvoiceStatus.DRAFT) {
+        throw new BadRequestException(`Invoice is already ${invoice.status}`);
+      }
+
+      return tx.invoice.update({
+        where: { tenantId_id: { tenantId, id } },
+        data: {
+          status: InvoiceStatus.CONFIRMED,
+          finalizedAt: new Date(),
+        },
+      });
+    });
+  }
+
+  // GAP-06: Void invoice
+  async voidInvoice(tenantId: string, id: string, reason?: string) {
+    return this.tenantContext.withTenant(tenantId, async (tx) => {
+      const invoice = await tx.invoice.findUniqueOrThrow({
+        where: { tenantId_id: { tenantId, id } },
+      });
+
+      if (invoice.status === InvoiceStatus.PAID) {
+        throw new BadRequestException('Cannot void an invoice that is already paid. Issue a credit note instead.');
+      }
+
+      return tx.invoice.update({
+        where: { tenantId_id: { tenantId, id } },
+        data: {
+          status: InvoiceStatus.VOID,
+        },
+      });
+    });
+  }
+
+  // GAP-08: Log manual payment (Cash, Bank Transfer, Cheque)
+  async recordManualPayment(tenantId: string, invoiceId: string, input: unknown, userId?: string) {
+    const parsed = RecordManualPaymentSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.errors);
+    }
+    const data = parsed.data;
+
+    return this.tenantContext.withTenant(tenantId, async (tx) => {
+      const invoice = await tx.invoice.findUniqueOrThrow({
+        where: { tenantId_id: { tenantId, id: invoiceId } },
+      });
+
+      if (invoice.status === InvoiceStatus.PAID) {
+        throw new BadRequestException('Invoice is already fully paid');
+      }
+
+      const paymentAmount = new Decimal(data.amount);
+      const remainingDue = new Decimal(invoice.amountDue.toString());
+
+      if (paymentAmount.greaterThan(remainingDue)) {
+        throw new BadRequestException(`Payment amount of ${paymentAmount} exceeds balance due of ${remainingDue}`);
+      }
+
+      const payment = await tx.payment.create({
+        data: {
+          tenantId,
+          invoiceId: invoice.id,
+          amount: new Prisma.Decimal(paymentAmount.toString()),
+          currency: invoice.currency,
+          paymentMethod: data.paymentMethod as any,
+          referenceNote: data.referenceNote,
+          recordedBy: userId,
+          paymentDate: data.paymentDate ? new Date(data.paymentDate) : new Date(),
+          status: PaymentStatus.SUCCEEDED,
+        },
+      });
+
+      const newAmountPaid = new Decimal(invoice.amountPaid.toString()).plus(paymentAmount);
+      const newAmountDue = remainingDue.minus(paymentAmount);
+      const isFullyPaid = newAmountDue.lessThanOrEqualTo(0);
+
+      const updatedInvoice = await tx.invoice.update({
+        where: { tenantId_id: { tenantId, id: invoice.id } },
+        data: {
+          amountPaid: new Prisma.Decimal(newAmountPaid.toString()),
+          amountDue: new Prisma.Decimal(newAmountDue.toString()),
+          status: isFullyPaid ? InvoiceStatus.PAID : invoice.status,
+          paidAt: isFullyPaid ? new Date() : undefined,
+        },
+      });
+
+      return {
+        payment,
+        invoice: updatedInvoice,
+      };
+    });
+  }
+
+  // GAP-08: Receivables tracking - Overdue confirmed invoices
+  async getOverdueInvoices(tenantId: string) {
+    return this.tenantContext.withTenant(tenantId, async (tx) => {
+      return tx.invoice.findMany({
+        where: {
+          status: { in: [InvoiceStatus.CONFIRMED, InvoiceStatus.FINALIZED] },
+          dueDate: { lt: new Date() },
+          amountDue: { gt: 0 },
+        },
+        include: { customer: true },
+        orderBy: { dueDate: 'asc' },
+      });
     });
   }
 

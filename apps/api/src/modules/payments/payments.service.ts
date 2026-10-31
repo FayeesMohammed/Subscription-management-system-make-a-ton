@@ -187,12 +187,10 @@ export class PaymentsService {
       }
 
       // Check if this payment was already recorded
-      const existingPayment = await tx.payment.findUnique({
+      const existingPayment = await tx.payment.findFirst({
         where: {
-          tenantId_gatewayPaymentId: {
-            tenantId,
-            gatewayPaymentId,
-          },
+          tenantId,
+          gatewayPaymentId,
         },
       });
 

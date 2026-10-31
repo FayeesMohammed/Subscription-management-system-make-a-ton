@@ -4,28 +4,39 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { TenantContextService } from '../../database/tenant-context.service';
-import { CreateSubscriptionSchema } from '@brightloop/validation';
+import {
+  CreateSubscriptionSchema,
+  CreateQuotationSchema,
+  CreateQuotationTemplateSchema,
+} from '@brightloop/validation';
 import {
   SubscriptionStatus,
   InvoiceStatus,
-  TenantRole,
 } from '@brightloop/shared-types';
 import { calculateLineItem, Decimal } from '@brightloop/financial-core';
 import { Prisma } from '@prisma/client';
+import { DiscountsService } from '../discounts/discounts.service';
 
 const ALLOWED_TRANSITIONS: Record<SubscriptionStatus, SubscriptionStatus[]> = {
+  [SubscriptionStatus.DRAFT]: [SubscriptionStatus.QUOTATION, SubscriptionStatus.CONFIRMED, SubscriptionStatus.CLOSED],
+  [SubscriptionStatus.QUOTATION]: [SubscriptionStatus.CONFIRMED, SubscriptionStatus.CLOSED],
+  [SubscriptionStatus.CONFIRMED]: [SubscriptionStatus.ACTIVE, SubscriptionStatus.CLOSED],
   [SubscriptionStatus.INCOMPLETE]: [SubscriptionStatus.ACTIVE, SubscriptionStatus.CANCELED],
   [SubscriptionStatus.TRIALING]: [SubscriptionStatus.ACTIVE, SubscriptionStatus.CANCELED, SubscriptionStatus.PAST_DUE],
-  [SubscriptionStatus.ACTIVE]: [SubscriptionStatus.PAST_DUE, SubscriptionStatus.PAUSED, SubscriptionStatus.CANCELED],
-  [SubscriptionStatus.PAST_DUE]: [SubscriptionStatus.ACTIVE, SubscriptionStatus.UNPAID, SubscriptionStatus.CANCELED],
-  [SubscriptionStatus.PAUSED]: [SubscriptionStatus.ACTIVE, SubscriptionStatus.CANCELED],
-  [SubscriptionStatus.UNPAID]: [SubscriptionStatus.ACTIVE, SubscriptionStatus.CANCELED],
+  [SubscriptionStatus.ACTIVE]: [SubscriptionStatus.PAST_DUE, SubscriptionStatus.PAUSED, SubscriptionStatus.CLOSED, SubscriptionStatus.CANCELED],
+  [SubscriptionStatus.PAST_DUE]: [SubscriptionStatus.ACTIVE, SubscriptionStatus.UNPAID, SubscriptionStatus.CLOSED, SubscriptionStatus.CANCELED],
+  [SubscriptionStatus.PAUSED]: [SubscriptionStatus.ACTIVE, SubscriptionStatus.CLOSED, SubscriptionStatus.CANCELED],
+  [SubscriptionStatus.UNPAID]: [SubscriptionStatus.ACTIVE, SubscriptionStatus.CLOSED, SubscriptionStatus.CANCELED],
+  [SubscriptionStatus.CLOSED]: [], // Terminal state
   [SubscriptionStatus.CANCELED]: [], // Terminal state
 };
 
 @Injectable()
 export class SubscriptionsService {
-  constructor(private readonly tenantContext: TenantContextService) {}
+  constructor(
+    private readonly tenantContext: TenantContextService,
+    private readonly discountsService: DiscountsService,
+  ) {}
 
   private calculatePeriodEnd(start: Date, interval: string, count = 1): Date {
     const end = new Date(start.getTime());
@@ -48,12 +59,206 @@ export class SubscriptionsService {
     return end;
   }
 
+  // GAP-05: Quotation template management
+  async createTemplate(tenantId: string, input: unknown) {
+    const parsed = CreateQuotationTemplateSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.errors);
+    }
+    const data = parsed.data;
+
+    return this.tenantContext.withTenant(tenantId, async (tx) => {
+      return tx.quotationTemplate.create({
+        data: {
+          tenantId,
+          name: data.name,
+          validForDays: data.validForDays,
+          lines: {
+            create: data.lines?.map((l) => ({
+              tenantId,
+              productId: l.productId,
+              variantId: l.variantId,
+              quantity: l.quantity,
+            })),
+          },
+        },
+        include: { lines: true },
+      });
+    });
+  }
+
+  async listTemplates(tenantId: string) {
+    return this.tenantContext.withTenant(tenantId, async (tx) => {
+      return tx.quotationTemplate.findMany({
+        include: { lines: true },
+      });
+    });
+  }
+
+  // GAP-05: Sales Quotations with validity window
+  async createQuotation(tenantId: string, input: unknown) {
+    const parsed = CreateQuotationSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.errors);
+    }
+    const { customerId, priceId, variantId, quantity, validForDays, discountCode } = parsed.data;
+
+    return this.tenantContext.withTenant(tenantId, async (tx) => {
+      const customer = await tx.customer.findUnique({
+        where: { tenantId_id: { tenantId, id: customerId } },
+      });
+      if (!customer) throw new NotFoundException(`Customer ${customerId} not found`);
+
+      const price = await tx.price.findUnique({
+        where: { tenantId_id: { tenantId, id: priceId } },
+        include: { product: true },
+      });
+      if (!price) throw new NotFoundException(`Price ${priceId} not found`);
+
+      // Plan schedule constraints
+      if (quantity < price.minQuantity) {
+        throw new BadRequestException(`Minimum required quantity for this plan is ${price.minQuantity}`);
+      }
+
+      const now = new Date();
+      const expiryDate = new Date(now.getTime() + validForDays * 24 * 60 * 60 * 1000);
+      const periodEnd = this.calculatePeriodEnd(now, price.billingInterval, price.billingIntervalCount);
+
+      const quote = await tx.subscription.create({
+        data: {
+          tenantId,
+          customerId,
+          status: SubscriptionStatus.QUOTATION,
+          currentPeriodStart: now,
+          currentPeriodEnd: periodEnd,
+          expiryDate,
+          autoClose: price.autoClose,
+          items: {
+            create: {
+              tenantId,
+              priceId,
+              variantId,
+              quantity,
+            },
+          },
+          statusLogs: {
+            create: {
+              tenantId,
+              fromStatus: SubscriptionStatus.DRAFT,
+              toStatus: SubscriptionStatus.QUOTATION,
+              reason: `Sales quotation created valid for ${validForDays} days`,
+              actor: 'sales',
+            },
+          },
+        },
+        include: {
+          items: { include: { price: { include: { product: true } } } },
+          customer: true,
+        },
+      });
+
+      return quote;
+    });
+  }
+
+  // GAP-05: Customer approves quotation -> Confirmed
+  async confirmQuotation(tenantId: string, subscriptionId: string) {
+    return this.tenantContext.withTenant(tenantId, async (tx) => {
+      const sub = await tx.subscription.findUniqueOrThrow({
+        where: { tenantId_id: { tenantId, id: subscriptionId } },
+      });
+
+      if (sub.status !== SubscriptionStatus.QUOTATION && sub.status !== SubscriptionStatus.DRAFT) {
+        throw new BadRequestException(`Subscription is in status '${sub.status}', expected 'quotation' or 'draft'`);
+      }
+
+      if (sub.expiryDate && sub.expiryDate < new Date()) {
+        await tx.subscription.update({
+          where: { tenantId_id: { tenantId, id: subscriptionId } },
+          data: { status: SubscriptionStatus.CLOSED },
+        });
+        throw new BadRequestException('Quotation has expired and cannot be confirmed');
+      }
+
+      return tx.subscription.update({
+        where: { tenantId_id: { tenantId, id: subscriptionId } },
+        data: {
+          status: SubscriptionStatus.CONFIRMED,
+          statusLogs: {
+            create: {
+              tenantId,
+              fromStatus: sub.status,
+              toStatus: SubscriptionStatus.CONFIRMED,
+              reason: 'Quotation approved by customer',
+              actor: 'customer',
+            },
+          },
+        },
+        include: { items: { include: { price: true } }, customer: true },
+      });
+    });
+  }
+
+  // GAP-05: Activate subscription on billing start date -> Generates invoice
+  async activateSubscription(tenantId: string, subscriptionId: string) {
+    return this.tenantContext.withTenant(tenantId, async (tx) => {
+      const sub = await tx.subscription.findUniqueOrThrow({
+        where: { tenantId_id: { tenantId, id: subscriptionId } },
+      });
+
+      const updated = await tx.subscription.update({
+        where: { tenantId_id: { tenantId, id: subscriptionId } },
+        data: {
+          status: SubscriptionStatus.ACTIVE,
+          statusLogs: {
+            create: {
+              tenantId,
+              fromStatus: sub.status,
+              toStatus: SubscriptionStatus.ACTIVE,
+              reason: 'Subscription activated',
+              actor: 'system',
+            },
+          },
+        },
+        include: { items: { include: { price: true } }, customer: true },
+      });
+
+      const invoice = await this.generateInvoiceForPeriod(tx, tenantId, subscriptionId);
+      return { subscription: updated, invoice };
+    });
+  }
+
+  // GAP-04 & GAP-05: Close subscription (early close or auto-close)
+  async closeSubscription(tenantId: string, subscriptionId: string, reason = 'Term ended or early close') {
+    return this.tenantContext.withTenant(tenantId, async (tx) => {
+      const sub = await tx.subscription.findUniqueOrThrow({
+        where: { tenantId_id: { tenantId, id: subscriptionId } },
+      });
+
+      return tx.subscription.update({
+        where: { tenantId_id: { tenantId, id: subscriptionId } },
+        data: {
+          status: SubscriptionStatus.CLOSED,
+          statusLogs: {
+            create: {
+              tenantId,
+              fromStatus: sub.status,
+              toStatus: SubscriptionStatus.CLOSED,
+              reason,
+              actor: 'system',
+            },
+          },
+        },
+      });
+    });
+  }
+
   async create(tenantId: string, input: unknown) {
     const parsed = CreateSubscriptionSchema.safeParse(input);
     if (!parsed.success) {
       throw new BadRequestException(parsed.error.errors);
     }
-    const { customerId, priceId, quantity, trialPeriodDays } = parsed.data;
+    const { customerId, priceId, variantId, quantity, trialPeriodDays, discountCode } = parsed.data;
 
     return this.tenantContext.withTenant(tenantId, async (tx) => {
       // Validate customer belongs to tenant
@@ -73,7 +278,20 @@ export class SubscriptionsService {
         throw new NotFoundException(`Price ${priceId} not found`);
       }
 
+      // GAP-04: Minimum quantity validation
+      if (quantity < price.minQuantity) {
+        throw new BadRequestException(`Minimum quantity for this plan is ${price.minQuantity}`);
+      }
+
+      // Plan availability window check
       const now = new Date();
+      if (price.startDate && price.startDate > now) {
+        throw new BadRequestException('This plan is not available yet');
+      }
+      if (price.endDate && price.endDate < now) {
+        throw new BadRequestException('This plan is no longer available');
+      }
+
       const periodEnd = this.calculatePeriodEnd(now, price.billingInterval, price.billingIntervalCount);
 
       let status = SubscriptionStatus.ACTIVE;
@@ -96,10 +314,12 @@ export class SubscriptionsService {
           currentPeriodEnd: periodEnd,
           trialStart,
           trialEnd,
+          autoClose: price.autoClose,
           items: {
             create: {
               tenantId,
               priceId,
+              variantId,
               quantity,
             },
           },
@@ -122,7 +342,7 @@ export class SubscriptionsService {
       // If active (not trialing), generate the immutable invoice for the first period
       let firstInvoice = null;
       if (status === SubscriptionStatus.ACTIVE) {
-        firstInvoice = await this.generateInvoiceForPeriod(tx, tenantId, subscription.id);
+        firstInvoice = await this.generateInvoiceForPeriod(tx, tenantId, subscription.id, discountCode);
       }
 
       return {
@@ -227,12 +447,13 @@ export class SubscriptionsService {
 
   /**
    * Generates a finalized, immutable invoice for a subscription's current billing period.
-   * Enforces idempotency per billing period.
+   * Integrates GAP-07 Discount Engine.
    */
   async generateInvoiceForPeriod(
     tx: Prisma.TransactionClient,
     tenantId: string,
     subscriptionId: string,
+    discountCode?: string,
   ) {
     const sub = await tx.subscription.findUniqueOrThrow({
       where: { tenantId_id: { tenantId, id: subscriptionId } },
@@ -319,6 +540,28 @@ export class SubscriptionsService {
       };
     });
 
+    // GAP-07: Automatic discount calculation if discountCode supplied
+    let discountTotal = new Decimal(0);
+    if (discountCode) {
+      const discountEvaluation = await this.discountsService.evaluateDiscount(
+        tx,
+        tenantId,
+        discountCode,
+        subtotal,
+        sub.items.reduce((acc, i) => acc + i.quantity, 0),
+      );
+      if (discountEvaluation.valid) {
+        discountTotal = discountEvaluation.discountAmount;
+        total = total.minus(discountTotal);
+        if (discountEvaluation.discountId) {
+          await tx.discount.update({
+            where: { tenantId_id: { tenantId, id: discountEvaluation.discountId } },
+            data: { currentUsageCount: { increment: 1 } },
+          });
+        }
+      }
+    }
+
     const dueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days payment term
 
     // Transactionally create invoice with lines and finalized status
@@ -331,7 +574,7 @@ export class SubscriptionsService {
         status: InvoiceStatus.FINALIZED,
         currency: sub.items[0]?.price.currency || 'INR',
         subtotal: new Prisma.Decimal(subtotal.toString()),
-        discountTotal: new Prisma.Decimal(0),
+        discountTotal: new Prisma.Decimal(discountTotal.toString()),
         taxTotal: new Prisma.Decimal(taxTotal.toString()),
         total: new Prisma.Decimal(total.toString()),
         amountPaid: new Prisma.Decimal(0),

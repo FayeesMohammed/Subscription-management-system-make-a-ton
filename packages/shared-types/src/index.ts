@@ -1,27 +1,54 @@
 export enum TenantRole {
   OWNER = 'OWNER',
   ADMIN = 'ADMIN',
+  TENANT_ADMIN = 'TENANT_ADMIN',
+  STAFF = 'STAFF',
+  TENANT_STAFF = 'TENANT_STAFF',
   FINANCE = 'FINANCE',
   MEMBER = 'MEMBER',
   VIEWER = 'VIEWER',
+  CUSTOMER_PORTAL = 'CUSTOMER_PORTAL',
+}
+
+export enum ProductType {
+  SOFTWARE = 'SOFTWARE',
+  ADD_ON = 'ADD_ON',
+  PHYSICAL = 'PHYSICAL',
 }
 
 export enum SubscriptionStatus {
+  DRAFT = 'draft',
+  QUOTATION = 'quotation',
+  CONFIRMED = 'confirmed',
   INCOMPLETE = 'incomplete',
   TRIALING = 'trialing',
   ACTIVE = 'active',
   PAST_DUE = 'past_due',
   PAUSED = 'paused',
+  CLOSED = 'closed',
   CANCELED = 'canceled',
   UNPAID = 'unpaid',
 }
 
 export enum InvoiceStatus {
   DRAFT = 'draft',
-  FINALIZED = 'finalized', // once finalized, immutable snapshot!
+  CONFIRMED = 'confirmed',
+  FINALIZED = 'finalized', // once finalized/confirmed, immutable snapshot!
   PAID = 'paid',
   VOID = 'void',
   UNCOLLECTIBLE = 'uncollectible',
+}
+
+export enum PaymentMethod {
+  GATEWAY = 'GATEWAY',
+  BANK_TRANSFER = 'BANK_TRANSFER',
+  CASH = 'CASH',
+  CHEQUE = 'CHEQUE',
+}
+
+export enum DiscountType {
+  FIXED_AMOUNT = 'FIXED_AMOUNT',
+  PERCENTAGE = 'PERCENTAGE',
 }
 
 export enum PaymentStatus {
