@@ -17,12 +17,55 @@ import {
   ArrowLeft,
   ChevronRight,
   ExternalLink,
+  Clock,
+  Calendar,
+  MessageSquare,
+  Users,
 } from 'lucide-react';
 import { Drawer } from '@brightloop/ui';
 import { RoleSwitcher } from '@/components/domain/RoleSwitcher';
 import { ScenarioSwitcher } from '@/components/domain/ScenarioSwitcher';
 import { CommandPalette } from '@/components/domain/CommandPalette';
+import { FloatingDockNav, DockNavItem } from '@/components/domain/FloatingDockNav';
 import { useApp } from '@/lib/context';
+
+const PORTAL_DOCK_ITEMS: DockNavItem[] = [
+  {
+    id: 'overview',
+    label: 'Overview & Hub',
+    href: '/portal/home',
+    icon: Home,
+    matchPrefix: ['/portal/home'],
+  },
+  {
+    id: 'invoices',
+    label: 'Invoices & Receipts',
+    href: '/portal/invoices',
+    icon: Clock,
+    matchPrefix: ['/portal/invoices'],
+  },
+  {
+    id: 'subscriptions',
+    label: 'My Subscriptions',
+    href: '/portal/subscriptions',
+    icon: Calendar,
+    matchPrefix: ['/portal/subscriptions'],
+  },
+  {
+    id: 'quotes',
+    label: 'Pending Quotes',
+    href: '/portal/quotes',
+    icon: MessageSquare,
+    matchPrefix: ['/portal/quotes'],
+  },
+  {
+    id: 'profile',
+    label: 'Company Profile',
+    href: '/portal/profile',
+    icon: Users,
+    matchPrefix: ['/portal/profile'],
+  },
+];
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -107,8 +150,10 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
             </div>
           </div>
 
-          {/* Desktop Nav Links */}
-          <nav className="hidden md:flex items-center">{renderNavLinks(false)}</nav>
+          {/* Center Floating Dock Navigation (From Reference Design) */}
+          <div className="hidden md:flex items-center justify-center">
+            <FloatingDockNav items={PORTAL_DOCK_ITEMS} />
+          </div>
 
           {/* Right Controls */}
           <div className="flex items-center gap-2.5 sm:gap-3">

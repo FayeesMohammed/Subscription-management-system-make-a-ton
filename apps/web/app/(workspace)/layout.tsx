@@ -30,6 +30,7 @@ import { Drawer } from '@brightloop/ui';
 import { RoleSwitcher } from '@/components/domain/RoleSwitcher';
 import { ScenarioSwitcher } from '@/components/domain/ScenarioSwitcher';
 import { CommandPalette } from '@/components/domain/CommandPalette';
+import { FloatingDockNav } from '@/components/domain/FloatingDockNav';
 import { useApp } from '@/lib/context';
 import { TenantRole } from '@brightloop/shared-types';
 import { mockRepo } from '@/mocks/repository';
@@ -253,6 +254,11 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
 
             {/* Quick Command Palette */}
             <CommandPalette />
+          </div>
+
+          {/* Center Floating Dock Navigation (From Reference Design) */}
+          <div className="hidden md:flex items-center justify-center px-2">
+            <FloatingDockNav />
           </div>
 
           {/* Right Header Controls */}
