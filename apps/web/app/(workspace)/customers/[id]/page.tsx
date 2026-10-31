@@ -2,25 +2,42 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
-import { Button, Card, Table, Alert } from '@brightloop/ui';
+import { Button, Card, Table, Alert, MetricCard } from '@brightloop/ui';
 import { CustomerDTO, SubscriptionDTO, InvoiceDTO } from '@/mocks/types';
 import { mockRepo } from '@/mocks/repository';
 import { useApp } from '@/lib/context';
+import { useToast } from '@/lib/toast';
 import { formatMoney, formatDate } from '@/lib/formatters';
 import { SubscriptionStatusBadge } from '@/components/domain/SubscriptionStatusBadge';
 import { InvoiceStatusBadge } from '@/components/domain/InvoiceStatusBadge';
-import { ArrowLeft, Building2, Mail, Phone, MapPin, Receipt, PlusCircle } from 'lucide-react';
+import {
+  ArrowLeft,
+  Building2,
+  Mail,
+  Phone,
+  MapPin,
+  Receipt,
+  PlusCircle,
+  Copy,
+  Check,
+  FileSignature,
+  DollarSign,
+  TrendingUp,
+  AlertTriangle,
+} from 'lucide-react';
 import Link from 'next/link';
 
 export default function CustomerDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const { refreshKey } = useApp();
+  const { success } = useToast();
 
   const [customer, setCustomer] = useState<CustomerDTO | null>(null);
   const [subscriptions, setSubscriptions] = useState<SubscriptionDTO[]>([]);
   const [invoices, setInvoices] = useState<InvoiceDTO[]>([]);
   const [loading, setLoading] = useState(true);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -28,8 +45,10 @@ export default function CustomerDetailPage() {
       const c = await mockRepo.getCustomerById(id);
       if (c) {
         setCustomer(c);
-        const subs = await mockRepo.getSubscriptions(c.id);
-        const invs = await mockRepo.getInvoices(c.id);
+        const [subs, invs] = await Promise.all([
+          mockRepo.getSubscriptions(c.id),
+          mockRepo.getInvoices(c.id),
+        ]);
         setSubscriptions(subs);
         setInvoices(invs);
       }
@@ -37,6 +56,13 @@ export default function CustomerDetailPage() {
     }
     load();
   }, [id, refreshKey]);
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(label);
+    success('Copied to Clipboard', `${label}: ${text}`);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
 
   if (loading) {
     return <div className="p-8 text-center text-slate-400">Loading customer account...</div>;
@@ -56,6 +82,10 @@ export default function CustomerDetailPage() {
       </div>
     );
   }
+
+  const totalInvoiced = invoices.reduce((acc, inv) => acc + Number(inv.totalAmount), 0);
+  const totalPaid = invoices.reduce((acc, inv) => acc + Number(inv.paidAmount), 0);
+  const totalOutstanding = invoices.reduce((acc, inv) => acc + Number(inv.outstandingBalance), 0);
 
   return (
     <div className="space-y-6">
@@ -77,11 +107,58 @@ export default function CustomerDetailPage() {
           </div>
         </div>
 
-        <Link href="/sales/quotes">
+        <Link href={`/sales/quotes?customer=${customer.id}`}>
           <Button variant="primary" size="sm" leftIcon={<PlusCircle className="w-4 h-4" />}>
             Draft Quote for Customer
           </Button>
         </Link>
+      </div>
+
+      {/* Customer Financial Health Ledger Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <Card surface="dark" className="p-3.5 border border-[#242f44]">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            Active Subscriptions
+          </span>
+          <p className="text-xl font-extrabold font-mono text-white mt-1">
+            {subscriptions.length}
+          </p>
+          <span className="text-[11px] text-slate-400">Total contracts on file</span>
+        </Card>
+
+        <Card surface="dark" className="p-3.5 border border-[#242f44]">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            Total Invoiced
+          </span>
+          <p className="text-xl font-extrabold font-mono text-white mt-1">
+            {formatMoney(totalInvoiced, customer.currency)}
+          </p>
+          <span className="text-[11px] text-slate-400">{invoices.length} invoices issued</span>
+        </Card>
+
+        <Card surface="dark" className="p-3.5 border border-[#242f44]">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            Total Realized
+          </span>
+          <p className="text-xl font-extrabold font-mono text-emerald-400 mt-1">
+            {formatMoney(totalPaid, customer.currency)}
+          </p>
+          <span className="text-[11px] text-slate-400">Collected cash receipts</span>
+        </Card>
+
+        <Card surface="dark" className="p-3.5 border border-[#242f44]">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            Outstanding Balance
+          </span>
+          <p
+            className={`text-xl font-extrabold font-mono mt-1 ${
+              totalOutstanding > 0 ? 'text-[#fcee21]' : 'text-slate-400'
+            }`}
+          >
+            {formatMoney(totalOutstanding, customer.currency)}
+          </p>
+          <span className="text-[11px] text-slate-400">Awaiting settlement</span>
+        </Card>
       </div>
 
       {/* Profile & Tax Details Card */}
@@ -90,9 +167,21 @@ export default function CustomerDetailPage() {
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
             Billing Contact
           </span>
-          <div className="flex items-center gap-2 text-xs text-slate-200">
-            <Mail className="w-4 h-4 text-slate-400" />
-            <span>{customer.email}</span>
+          <div className="flex items-center justify-between text-xs text-slate-200">
+            <div className="flex items-center gap-2 truncate">
+              <Mail className="w-4 h-4 text-slate-400 shrink-0" />
+              <span className="truncate">{customer.email}</span>
+            </div>
+            <button
+              onClick={() => copyToClipboard(customer.email, 'Email')}
+              className="p-1 text-slate-400 hover:text-[#fcee21] transition-colors rounded hover:bg-[#151b28]"
+            >
+              {copiedField === 'Email' ? (
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+              ) : (
+                <Copy className="w-3.5 h-3.5" />
+              )}
+            </button>
           </div>
           {customer.phone && (
             <div className="flex items-center gap-2 text-xs text-slate-200">
@@ -106,9 +195,23 @@ export default function CustomerDetailPage() {
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
             Tax Registration
           </span>
-          <p className="text-sm font-bold font-mono text-white">
-            {customer.taxNumber || 'No GSTIN provided'}
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-bold font-mono text-white">
+              {customer.taxNumber || 'No GSTIN provided'}
+            </p>
+            {customer.taxNumber && (
+              <button
+                onClick={() => copyToClipboard(customer.taxNumber!, 'GSTIN')}
+                className="p-1 text-slate-400 hover:text-[#fcee21] transition-colors rounded hover:bg-[#151b28]"
+              >
+                {copiedField === 'GSTIN' ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+              </button>
+            )}
+          </div>
           <p className="text-[11px] text-slate-400">Applicable tax rate: 18% GST (Standard)</p>
         </Card>
 
@@ -119,8 +222,11 @@ export default function CustomerDetailPage() {
           <div className="flex items-start gap-2 text-xs text-slate-200">
             <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
             <div>
-              <p>{customer.addressLine1 || 'Registered address on file'}</p>
-              <p>{customer.city ? `${customer.city}, ` : ''}{customer.country}</p>
+              <p>{customer.addressLine1 || 'Registered commercial facility'}</p>
+              <p>
+                {customer.city ? `${customer.city}, ` : ''}
+                {customer.country}
+              </p>
             </div>
           </div>
         </Card>

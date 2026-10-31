@@ -6,6 +6,7 @@ import { Button, Card, Table, Alert } from '@brightloop/ui';
 import { SubscriptionDTO } from '@/mocks/types';
 import { mockRepo } from '@/mocks/repository';
 import { useApp } from '@/lib/context';
+import { useToast } from '@/lib/toast';
 import { formatMoney, formatDate, formatDateTime } from '@/lib/formatters';
 import { SubscriptionStatus } from '@brightloop/shared-types';
 import { SubscriptionStatusBadge } from '@/components/domain/SubscriptionStatusBadge';
@@ -22,6 +23,8 @@ import {
   Layers,
   Bot,
   UserCheck,
+  Check,
+  Zap,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -29,6 +32,7 @@ export default function SubscriptionDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const { refreshKey, triggerRefresh, role, user } = useApp();
+  const { success, error } = useToast();
 
   const [subscription, setSubscription] = useState<SubscriptionDTO | null>(null);
   const [loading, setLoading] = useState(true);
@@ -73,7 +77,13 @@ export default function SubscriptionDetailPage() {
         action.targetStatus as SubscriptionStatus,
         `${user.name} (${user.role})`,
       );
+      success(
+        `State Advanced to ${action.targetStatus.toUpperCase()}`,
+        `Subscription ${subscription.subscriptionNumber} lifecycle stage updated.`,
+      );
       triggerRefresh();
+    } catch (err: unknown) {
+      error('Transition Rejected', err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setTransitioning(false);
     }
@@ -94,7 +104,7 @@ export default function SubscriptionDetailPage() {
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#242f44] pb-5">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#1f283d] pb-5">
         <div className="space-y-1">
           <Link
             href="/sales/subscriptions"
@@ -104,7 +114,7 @@ export default function SubscriptionDetailPage() {
             <span>All Subscriptions</span>
           </Link>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-extrabold tracking-tight text-white font-mono">
+            <h1 className="text-2xl font-black tracking-tight text-white font-mono">
               {subscription.subscriptionNumber}
             </h1>
             <SubscriptionStatusBadge status={subscription.status} />
@@ -121,7 +131,7 @@ export default function SubscriptionDetailPage() {
           </p>
         </div>
 
-        {/* Transition Actions */}
+        {/* Transition Action Buttons */}
         <div>
           <TransitionAction
             actions={permittedActions}
@@ -131,30 +141,45 @@ export default function SubscriptionDetailPage() {
         </div>
       </div>
 
-      {/* Visual Lifecycle Stepper */}
-      <Card surface="dark" className="p-4 border border-[#242f44]">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block mb-3">
-          Commercial Lifecycle Pipeline
-        </span>
-        <div className="grid grid-cols-5 gap-2 text-center text-xs">
+      {/* Visual Lifecycle Pipeline Stepper */}
+      <Card surface="dark" className="p-5 border border-[#1f283d] bg-[#0c1017]">
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block">
+            Commercial Lifecycle Progression
+          </span>
+          <span className="text-xs font-mono text-[#fcee21] font-semibold">
+            Stage {currentStageIndex + 1} of {lifecycleStages.length}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-center text-xs">
           {lifecycleStages.map((stage, idx) => {
             const isCompleted = idx < currentStageIndex;
             const isCurrent = idx === currentStageIndex;
             return (
               <div
                 key={stage}
-                className={`p-2.5 rounded-lg border transition-all ${
+                className={`relative p-3 rounded-xl border transition-all ${
                   isCurrent
-                    ? 'bg-[#fcee21] text-black border-[#fcee21] font-extrabold shadow-sm'
+                    ? 'bg-[#fcee21] text-black border-[#fcee21] font-black shadow-[0_0_12px_rgba(252,238,33,0.3)]'
                     : isCompleted
                     ? 'bg-emerald-950/40 text-emerald-300 border-emerald-800 font-semibold'
-                    : 'bg-[#08090d] text-slate-500 border-[#242f44]'
+                    : 'bg-[#121622] text-slate-500 border-[#1f283d]'
                 }`}
               >
-                <span className="block text-[10px] uppercase tracking-wider">
-                  Stage 0{idx + 1}
-                </span>
-                <span className="font-mono uppercase">{stage}</span>
+                <div className="flex items-center justify-center gap-1.5 mb-1">
+                  {isCompleted ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  ) : isCurrent ? (
+                    <Zap className="w-3.5 h-3.5 fill-current" />
+                  ) : (
+                    <span className="w-2 h-2 rounded-full bg-slate-600" />
+                  )}
+                  <span className="text-[10px] uppercase tracking-wider opacity-80">
+                    Step 0{idx + 1}
+                  </span>
+                </div>
+                <span className="font-mono uppercase font-bold">{stage}</span>
               </div>
             );
           })}
@@ -165,23 +190,23 @@ export default function SubscriptionDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Line Items & Timeline */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Line Items */}
-          <Card surface="dark" className="space-y-3">
-            <div className="flex items-center justify-between border-b border-[#242f44] pb-2">
+          {/* Line Items Card */}
+          <Card surface="dark" className="space-y-3 border border-[#1f283d] bg-[#0c1017]">
+            <div className="flex items-center justify-between border-b border-[#1b2333] pb-2">
               <h2 className="text-sm font-bold uppercase tracking-wider text-white">
-                Contracted Plan & Line Items
+                Contracted Products &amp; Line Items
               </h2>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="border-b border-[#242f44] text-slate-400 font-semibold uppercase">
-                    <th className="py-2 px-3">Product / Module</th>
-                    <th className="py-2 px-3">Unit Price</th>
-                    <th className="py-2 px-3">Qty</th>
-                    <th className="py-2 px-3 text-right">Tax (18%)</th>
-                    <th className="py-2 px-3 text-right">Total Amount</th>
+                  <tr className="border-b border-[#1f283d] text-slate-400 font-semibold uppercase">
+                    <th className="py-2.5 px-3">Product / Module</th>
+                    <th className="py-2.5 px-3">Unit Price</th>
+                    <th className="py-2.5 px-3">Qty</th>
+                    <th className="py-2.5 px-3 text-right">Tax (18%)</th>
+                    <th className="py-2.5 px-3 text-right">Total Amount</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#1b2333]">
@@ -191,7 +216,7 @@ export default function SubscriptionDetailPage() {
                         <p className="font-bold text-white">{l.productName}</p>
                         {l.variantName && (
                           <p className="text-[11px] text-[#fcee21] font-mono">
-                            Variant: {l.variantName}
+                            Tier Variant: {l.variantName}
                           </p>
                         )}
                       </td>
@@ -210,23 +235,22 @@ export default function SubscriptionDetailPage() {
             </div>
           </Card>
 
-          {/* Lifecycle Audit Timeline */}
-          <Card surface="dark" className="space-y-4">
-            <div className="flex items-center justify-between border-b border-[#242f44] pb-2">
+          {/* Audit Timeline */}
+          <Card surface="dark" className="space-y-4 border border-[#1f283d] bg-[#0c1017]">
+            <div className="flex items-center justify-between border-b border-[#1b2333] pb-2">
               <h2 className="text-sm font-bold uppercase tracking-wider text-white">
-                Audit Timeline & Lifecycle History
+                Audit Timeline &amp; State Transitions
               </h2>
             </div>
 
-            <div className="relative pl-6 space-y-4 border-l border-[#242f44]">
+            <div className="relative pl-6 space-y-4 border-l border-[#1f283d]">
               {subscription.timeline.map((evt) => (
                 <div key={evt.id} className="relative group">
-                  {/* Indicator Dot */}
                   <div
-                    className={`absolute -left-[31px] top-1 p-1 rounded-full border ${
+                    className={`absolute -left-[31px] top-1 p-1 rounded-full border shadow-sm ${
                       evt.isSystemManaged
                         ? 'bg-sky-950 border-sky-600 text-sky-400'
-                        : 'bg-[#fcee21] border-[#fcee21] text-black'
+                        : 'bg-[#fcee21] border-[#fcee21] text-black font-bold'
                     }`}
                   >
                     {evt.isSystemManaged ? (
@@ -236,7 +260,7 @@ export default function SubscriptionDetailPage() {
                     )}
                   </div>
 
-                  <div className="space-y-1">
+                  <div className="space-y-1 p-2.5 rounded-xl bg-[#121622]/40 hover:bg-[#121622] transition-colors">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-white">{evt.title}</span>
                       <span className="text-[10px] text-slate-400 font-mono">
@@ -245,7 +269,7 @@ export default function SubscriptionDetailPage() {
                     </div>
                     <p className="text-xs text-slate-300">{evt.description}</p>
                     <p className="text-[10px] text-slate-500 font-mono">
-                      Actor: <span className="text-slate-400">{evt.actor}</span>
+                      Actor Signature: <span className="text-slate-300 font-semibold">{evt.actor}</span>
                     </p>
                   </div>
                 </div>
@@ -265,8 +289,8 @@ export default function SubscriptionDetailPage() {
             currency={subscription.currency}
           />
 
-          <Card surface="dark" className="space-y-3 p-4 border border-[#242f44] text-xs">
-            <span className="font-bold uppercase tracking-wider text-slate-400 block border-b border-[#242f44] pb-2">
+          <Card surface="dark" className="space-y-3 p-4 border border-[#1f283d] bg-[#0c1017] text-xs">
+            <span className="font-bold uppercase tracking-wider text-slate-400 block border-b border-[#1b2333] pb-2">
               Contract Terms
             </span>
             <div className="space-y-2 text-slate-300">
@@ -289,7 +313,7 @@ export default function SubscriptionDetailPage() {
                 </span>
               </div>
               {subscription.validUntil && (
-                <div className="flex items-center justify-between text-rose-300">
+                <div className="flex items-center justify-between text-amber-300 font-semibold">
                   <span>Quotation Expiry</span>
                   <span className="font-mono font-bold">
                     {formatDate(subscription.validUntil)}

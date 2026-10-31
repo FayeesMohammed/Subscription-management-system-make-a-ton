@@ -14,6 +14,10 @@ import {
   Clock,
   Send,
   Zap,
+  Users,
+  CreditCard,
+  Layers,
+  ArrowRight,
 } from 'lucide-react';
 import { Button, Card, MetricCard, Alert } from '@brightloop/ui';
 import { mockRepo } from '@/mocks/repository';
@@ -22,6 +26,7 @@ import { formatMoney, formatDate } from '@/lib/formatters';
 import { SubscriptionStatusBadge } from '@/components/domain/SubscriptionStatusBadge';
 import { InvoiceStatusBadge } from '@/components/domain/InvoiceStatusBadge';
 import { ReceivablesIndicator } from '@/components/domain/ReceivablesIndicator';
+import { FinancialTrajectoryChart } from '@/components/domain/FinancialTrajectoryChart';
 import { useApp } from '@/lib/context';
 import Link from 'next/link';
 
@@ -63,14 +68,14 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#242f44] pb-5">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#1f283d] pb-5">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-extrabold tracking-tight text-white">
-              Operations & Finance Overview
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl font-black tracking-tight text-white">
+              Operations &amp; Finance Command
             </h1>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#fcee21]/15 text-[#fcee21] border border-[#fcee21]/40">
-              SLA &lt;2s
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#fcee21]/15 text-[#fcee21] border border-[#fcee21]/40 shadow-[0_0_8px_rgba(252,238,33,0.15)]">
+              Sub-2s SLA Compliant
             </span>
           </div>
           <p className="mt-1 text-xs text-slate-400">
@@ -79,15 +84,15 @@ export default function DashboardPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Date Filter */}
-          <div className="flex items-center rounded-lg border border-[#242f44] bg-[#0d111a] p-1 text-xs">
+          {/* Date Filter Pills */}
+          <div className="flex items-center rounded-xl border border-[#1f283d] bg-[#0c1017] p-1 text-xs">
             {(['30d', '90d', 'ytd'] as const).map((range) => (
               <button
                 key={range}
                 onClick={() => setDateRange(range)}
-                className={`px-2.5 py-1 rounded font-bold uppercase transition-colors ${
+                className={`px-3 py-1 rounded-lg font-bold uppercase transition-all ${
                   dateRange === range
-                    ? 'bg-[#fcee21] text-black shadow-sm'
+                    ? 'bg-[#fcee21] text-black shadow-sm font-black'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
@@ -102,42 +107,71 @@ export default function DashboardPage() {
               size="sm"
               leftIcon={<PlusCircle className="w-3.5 h-3.5" />}
             >
-              New Quotation
+              Draft Quotation
             </Button>
           </Link>
         </div>
       </div>
 
-      {/* Scenario Highlights Alert if applicable */}
+      {/* Quick Action Navigation Bar */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: 'Issue Quotation', href: '/sales/quotes', icon: Send, color: 'text-[#fcee21]' },
+          { label: 'Record Manual Receipt', href: '/finance/payments', icon: CreditCard, color: 'text-emerald-400' },
+          { label: 'Add Customer Account', href: '/customers', icon: Users, color: 'text-sky-400' },
+          { label: 'Configure Catalog Plan', href: '/catalog/plans', icon: Layers, color: 'text-amber-400' },
+        ].map((action, i) => {
+          const Icon = action.icon;
+          return (
+            <Link
+              key={i}
+              href={action.href}
+              className="group flex items-center justify-between p-3 rounded-xl bg-[#0c1017] hover:bg-[#151c2a] border border-[#1f283d] hover:border-[#2a3650] transition-all shadow-sm"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className={`p-2 rounded-lg bg-[#141a27] ${action.color} border border-[#222c3f]`}>
+                  <Icon className="w-4 h-4" />
+                </div>
+                <span className="text-xs font-bold text-slate-200 group-hover:text-white">
+                  {action.label}
+                </span>
+              </div>
+              <ArrowRight className="w-3.5 h-3.5 text-slate-500 group-hover:translate-x-1 group-hover:text-[#fcee21] transition-all" />
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* Scenario Highlights Alert */}
       {scenario === 'OVERDUE_INVOICE' && (
         <Alert
           variant="error"
-          title="Attention: Overdue Receivables Detected"
+          title="Critical Collection Notice: Overdue Receivables Active"
           action={
             <Link href="/finance/invoices">
               <Button variant="danger" size="sm">
-                View Overdue
+                Inspect Invoices
               </Button>
             </Link>
           }
         >
-          There are confirmed invoices past due requiring immediate manual collection follow-up.
+          Confirmed invoice INV-2026-003 for Stellar Media Works is 15 days past its due date.
         </Alert>
       )}
 
       {scenario === 'QUOTE_NEAR_EXPIRY' && (
         <Alert
           variant="warning"
-          title="Quotation Approaching Commercial Expiry"
+          title="Quotation Validity Urgency: Expiry in &lt; 2 Hours"
           action={
             <Link href="/sales/quotes">
               <Button variant="secondary" size="sm">
-                Inspect Quotes
+                Review Quotation
               </Button>
             </Link>
           }
         >
-          Quotation proposal SUB-2026-0002 for Apex Retail expires within 2 hours.
+          Commercial proposal for Apex Retail Solutions Ltd (₹1,77,000.00) requires urgent customer acceptance.
         </Alert>
       )}
 
@@ -178,6 +212,9 @@ export default function DashboardPage() {
         />
       </div>
 
+      {/* Financial Trajectory Chart */}
+      <FinancialTrajectoryChart />
+
       {/* Receivables Realization Progress */}
       <ReceivablesIndicator
         collected={metrics.collectedRevenue}
@@ -187,32 +224,32 @@ export default function DashboardPage() {
 
       {/* Subscription Commercial Lifecycle Counts */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card surface="dark" className="p-4 border border-[#242f44]">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+        <Card surface="dark" className="p-4 border border-[#1f283d] bg-[#0c1017]">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
             Active Subscriptions
           </span>
           <p className="mt-1 text-2xl font-black font-mono text-emerald-400">
             {metrics.activeSubscriptions}
           </p>
         </Card>
-        <Card surface="dark" className="p-4 border border-[#242f44]">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+        <Card surface="dark" className="p-4 border border-[#1f283d] bg-[#0c1017]">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
             Open Quotations
           </span>
           <p className="mt-1 text-2xl font-black font-mono text-sky-400">
             {metrics.draftQuotations}
           </p>
         </Card>
-        <Card surface="dark" className="p-4 border border-[#242f44]">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+        <Card surface="dark" className="p-4 border border-[#1f283d] bg-[#0c1017]">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
             Confirmed Pending Start
           </span>
           <p className="mt-1 text-2xl font-black font-mono text-amber-400">
             {metrics.confirmedSubscriptions}
           </p>
         </Card>
-        <Card surface="dark" className="p-4 border border-[#242f44]">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+        <Card surface="dark" className="p-4 border border-[#1f283d] bg-[#0c1017]">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
             Closed / Completed
           </span>
           <p className="mt-1 text-2xl font-black font-mono text-slate-400">
@@ -224,12 +261,12 @@ export default function DashboardPage() {
       {/* Operational Grids: Subscriptions & Invoices */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Subscriptions */}
-        <Card surface="dark" className="space-y-4">
-          <div className="flex items-center justify-between border-b border-[#242f44] pb-3">
+        <Card surface="dark" className="space-y-4 border border-[#1f283d] bg-[#0c1017]">
+          <div className="flex items-center justify-between border-b border-[#1b2333] pb-3">
             <div className="flex items-center gap-2">
               <FileSignature className="w-4 h-4 text-[#fcee21]" />
               <h2 className="text-sm font-bold tracking-tight text-white uppercase">
-                Recent Subscriptions & Quotes
+                Subscriptions &amp; Quotes Pipeline
               </h2>
             </div>
             <Link
@@ -249,7 +286,7 @@ export default function DashboardPage() {
                 <Link
                   key={sub.id}
                   href={`/sales/subscriptions/${sub.id}`}
-                  className="flex items-center justify-between p-3 rounded-lg bg-[#151b28]/60 hover:bg-[#151b28] border border-[#242f44] transition-all group"
+                  className="flex items-center justify-between p-3 rounded-xl bg-[#121622] hover:bg-[#182030] border border-[#1f283d] transition-all group"
                 >
                   <div className="overflow-hidden space-y-0.5">
                     <div className="flex items-center gap-2">
@@ -275,12 +312,12 @@ export default function DashboardPage() {
         </Card>
 
         {/* Recent Invoices */}
-        <Card surface="dark" className="space-y-4">
-          <div className="flex items-center justify-between border-b border-[#242f44] pb-3">
+        <Card surface="dark" className="space-y-4 border border-[#1f283d] bg-[#0c1017]">
+          <div className="flex items-center justify-between border-b border-[#1b2333] pb-3">
             <div className="flex items-center gap-2">
               <Receipt className="w-4 h-4 text-[#fcee21]" />
               <h2 className="text-sm font-bold tracking-tight text-white uppercase">
-                Recent Invoices & Receivables
+                Recent Invoices &amp; Receivables
               </h2>
             </div>
             <Link
@@ -300,7 +337,7 @@ export default function DashboardPage() {
                 <Link
                   key={inv.id}
                   href={`/finance/invoices/${inv.id}`}
-                  className="flex items-center justify-between p-3 rounded-lg bg-[#151b28]/60 hover:bg-[#151b28] border border-[#242f44] transition-all group"
+                  className="flex items-center justify-between p-3 rounded-xl bg-[#121622] hover:bg-[#182030] border border-[#1f283d] transition-all group"
                 >
                   <div className="overflow-hidden space-y-0.5">
                     <div className="flex items-center gap-2">

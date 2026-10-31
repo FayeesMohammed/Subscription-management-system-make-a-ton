@@ -6,6 +6,7 @@ import { Button, Card, Modal, Alert } from '@brightloop/ui';
 import { InvoiceDTO } from '@/mocks/types';
 import { mockRepo } from '@/mocks/repository';
 import { useApp } from '@/lib/context';
+import { useToast } from '@/lib/toast';
 import { formatMoney, formatDate } from '@/lib/formatters';
 import { InvoiceStatus, PaymentMethod } from '@brightloop/shared-types';
 import { InvoiceStatusBadge } from '@/components/domain/InvoiceStatusBadge';
@@ -23,6 +24,8 @@ import {
   Lock,
   Printer,
   Calendar,
+  FileCheck,
+  Shield,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -30,11 +33,11 @@ export default function InvoiceDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const { refreshKey, triggerRefresh, role, user, can } = useApp();
+  const { success, error: toastError, info } = useToast();
 
   const [invoice, setInvoice] = useState<InvoiceDTO | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
-  const [downloadSuccess, setDownloadSuccess] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -74,10 +77,14 @@ export default function InvoiceDetailPage() {
       setActionLoading(true);
       if (action.targetStatus === InvoiceStatus.CONFIRMED) {
         await mockRepo.confirmInvoice(invoice.id);
+        success('Invoice Confirmed & Locked', 'Document snapshot is now permanently immutable.');
       } else if (action.targetStatus === InvoiceStatus.VOID) {
         await mockRepo.voidInvoice(invoice.id);
+        info('Invoice Voided', 'Invoice has been canceled.');
       }
       triggerRefresh();
+    } catch (err: unknown) {
+      toastError('Action Failed', err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setActionLoading(false);
     }
@@ -96,17 +103,14 @@ export default function InvoiceDetailPage() {
     triggerRefresh();
   };
 
-  const handleDownloadInvoice = () => {
-    setDownloadSuccess(true);
-    setTimeout(() => setDownloadSuccess(false), 3000);
-    // Trigger browser print/pdf dialog
+  const handlePrint = () => {
     window.print();
   };
 
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#242f44] pb-5">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#1f283d] pb-5">
         <div className="space-y-1">
           <Link
             href="/finance/invoices"
@@ -116,7 +120,7 @@ export default function InvoiceDetailPage() {
             <span>Invoices Ledger</span>
           </Link>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-extrabold tracking-tight text-white font-mono">
+            <h1 className="text-2xl font-black tracking-tight text-white font-mono">
               {invoice.invoiceNumber}
             </h1>
             <InvoiceStatusBadge status={invoice.status} isOverdue={invoice.isOverdue} />
@@ -137,13 +141,13 @@ export default function InvoiceDetailPage() {
           <Button
             variant="outline"
             size="sm"
-            leftIcon={<Download className="w-3.5 h-3.5" />}
-            onClick={handleDownloadInvoice}
+            leftIcon={<Printer className="w-3.5 h-3.5" />}
+            onClick={handlePrint}
           >
             Download / Print PDF
           </Button>
 
-          {/* Lifecycle Action Buttons */}
+          {/* Permitted Lifecycle Action Buttons */}
           <TransitionAction
             actions={permittedActions}
             onExecute={handleExecuteTransition}
@@ -152,29 +156,53 @@ export default function InvoiceDetailPage() {
         </div>
       </div>
 
-      {downloadSuccess && (
-        <Alert variant="success" title="Download Initiated">
-          Official tax invoice PDF document compiled successfully.
-        </Alert>
-      )}
-
       {/* Prominent Immutability Notice */}
       <InvoiceLockNotice status={invoice.status} />
 
       {/* Document Grid: Items & Ledger */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          {/* Invoice Document Card */}
-          <Card surface="dark" className="space-y-4">
-            <div className="flex items-center justify-between border-b border-[#242f44] pb-3">
-              <div className="flex items-center gap-2">
-                <Receipt className="w-4 h-4 text-[#fcee21]" />
-                <h2 className="text-sm font-bold uppercase tracking-wider text-white">
-                  Invoice Line Item Snapshot
-                </h2>
+          {/* Printable Official Tax Invoice Container */}
+          <Card surface="dark" className="relative space-y-5 border border-[#1f283d] bg-[#0c1017] p-6 overflow-hidden">
+            {/* Watermark Status Stamp */}
+            <div className="absolute right-6 top-6 pointer-events-none select-none opacity-80 rotate-12">
+              {invoice.status === InvoiceStatus.PAID ? (
+                <div className="border-4 border-emerald-500 text-emerald-400 font-mono font-black text-2xl uppercase px-4 py-1 rounded-xl tracking-widest shadow-lg">
+                  PAID
+                </div>
+              ) : invoice.isOverdue ? (
+                <div className="border-4 border-rose-500 text-rose-400 font-mono font-black text-2xl uppercase px-4 py-1 rounded-xl tracking-widest shadow-lg animate-pulse">
+                  OVERDUE
+                </div>
+              ) : isLocked ? (
+                <div className="border-4 border-amber-500 text-amber-400 font-mono font-black text-xl uppercase px-4 py-1 rounded-xl tracking-widest shadow-lg">
+                  LOCKED
+                </div>
+              ) : (
+                <div className="border-4 border-slate-600 text-slate-400 font-mono font-black text-xl uppercase px-4 py-1 rounded-xl tracking-widest shadow-lg">
+                  DRAFT
+                </div>
+              )}
+            </div>
+
+            {/* Invoice Header Details */}
+            <div className="grid grid-cols-2 gap-4 pb-4 border-b border-[#1f283d] text-xs">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                  Supplier Organization
+                </span>
+                <p className="font-bold text-white text-sm mt-0.5">{user.tenantName}</p>
+                <p className="text-slate-400 font-mono text-[11px]">GSTIN: 29AABCB1234F1Z1</p>
+                <p className="text-slate-400 text-[11px]">Bengaluru, Karnataka, IN</p>
               </div>
-              <div className="text-right text-xs font-mono text-slate-400">
-                <span>Issue: {formatDate(invoice.issueDate)} • Due: {formatDate(invoice.dueDate)}</span>
+
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                  Billed Recipient
+                </span>
+                <p className="font-bold text-white text-sm mt-0.5">{invoice.customerName}</p>
+                <p className="text-slate-400 font-mono text-[11px]">{invoice.customerEmail}</p>
+                <p className="text-slate-400 text-[11px]">Place of Supply: Karnataka (29)</p>
               </div>
             </div>
 
@@ -182,7 +210,7 @@ export default function InvoiceDetailPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="border-b border-[#242f44] text-slate-400 font-semibold uppercase">
+                  <tr className="border-b border-[#1f283d] text-slate-400 font-semibold uppercase">
                     <th className="py-2.5 px-3">Item Description</th>
                     <th className="py-2.5 px-3">Unit Price</th>
                     <th className="py-2.5 px-3">Qty</th>
@@ -214,6 +242,33 @@ export default function InvoiceDetailPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* GST Tax Breakup Table */}
+            <div className="pt-3 border-t border-[#1f283d] text-xs">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-2">
+                Statutory Tax Breakup (SAC 998313 — Information Technology Software Services)
+              </span>
+              <div className="grid grid-cols-3 gap-2 text-[11px] font-mono p-2.5 rounded-xl bg-[#121622] border border-[#1f283d]">
+                <div>
+                  <span className="text-slate-400 block">CGST (9%)</span>
+                  <span className="font-bold text-white">
+                    {formatMoney(Number(invoice.taxAmount) / 2, invoice.currency)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">SGST (9%)</span>
+                  <span className="font-bold text-white">
+                    {formatMoney(Number(invoice.taxAmount) / 2, invoice.currency)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Total GST Retained</span>
+                  <span className="font-bold text-[#fcee21]">
+                    {formatMoney(invoice.taxAmount, invoice.currency)}
+                  </span>
+                </div>
+              </div>
+            </div>
           </Card>
 
           {/* Payment Receipts Ledger */}
@@ -240,8 +295,8 @@ export default function InvoiceDetailPage() {
             currency={invoice.currency}
           />
 
-          <Card surface="dark" className="p-4 space-y-2 border border-[#242f44] text-xs">
-            <span className="font-bold uppercase tracking-wider text-slate-400 block border-b border-[#242f44] pb-2">
+          <Card surface="dark" className="p-4 space-y-2 border border-[#1f283d] bg-[#0c1017] text-xs">
+            <span className="font-bold uppercase tracking-wider text-slate-400 block border-b border-[#1b2333] pb-2">
               Billing Metadata
             </span>
             <div className="space-y-2 text-slate-300">

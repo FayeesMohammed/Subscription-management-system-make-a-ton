@@ -166,6 +166,7 @@ export interface InvoiceDTO {
   customerId: string;
   customerName: string;
   customerEmail: string;
+  customerTaxNumber?: string;
   status: InvoiceStatus;
   currency: string;
   issueDate: string;

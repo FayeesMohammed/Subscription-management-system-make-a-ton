@@ -1,20 +1,34 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Modal, Alert } from '@brightloop/ui';
+import { Card, Table, Button, Modal, Alert, Input } from '@brightloop/ui';
 import { SubscriptionDTO } from '@/mocks/types';
 import { mockRepo } from '@/mocks/repository';
 import { useApp } from '@/lib/context';
+import { useToast } from '@/lib/toast';
 import { formatMoney, formatDate } from '@/lib/formatters';
 import { SubscriptionStatus } from '@brightloop/shared-types';
 import { SubscriptionStatusBadge } from '@/components/domain/SubscriptionStatusBadge';
 import { PricingSummary } from '@/components/domain/PricingSummary';
-import { Send, Clock, CheckCircle, ShieldCheck } from 'lucide-react';
+import {
+  Send,
+  Clock,
+  CheckCircle,
+  ShieldCheck,
+  FileSignature,
+  FileCheck2,
+  Calendar,
+  AlertCircle,
+} from 'lucide-react';
 
 export default function PortalQuotesPage() {
   const { refreshKey, triggerRefresh, user, scenario } = useApp();
+  const { success, error } = useToast();
   const [quotes, setQuotes] = useState<SubscriptionDTO[]>([]);
   const [selectedQuote, setSelectedQuote] = useState<SubscriptionDTO | null>(null);
+  const [signerName, setSignerName] = useState(user.name);
+  const [signerTitle, setSignerTitle] = useState('Authorized Officer');
+  const [agreedTerms, setAgreedTerms] = useState(false);
   const [accepting, setAccepting] = useState(false);
   const [acceptedSuccess, setAcceptedSuccess] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -31,19 +45,29 @@ export default function PortalQuotesPage() {
     load();
   }, [refreshKey, scenario]);
 
+  const handleOpenReview = (q: SubscriptionDTO) => {
+    setSelectedQuote(q);
+    setSignerName(user.name);
+    setAgreedTerms(false);
+  };
+
   const handleAcceptQuote = async () => {
-    if (!selectedQuote) return;
+    if (!selectedQuote || !agreedTerms) return;
     try {
       setAccepting(true);
       await mockRepo.transitionSubscription(
         selectedQuote.id,
         SubscriptionStatus.CONFIRMED,
-        `${user.name} (Client Acceptance)`,
+        `${signerName} (${signerTitle})`,
       );
+      const quoteNum = selectedQuote.subscriptionNumber;
       setSelectedQuote(null);
       setAcceptedSuccess(true);
-      setTimeout(() => setAcceptedSuccess(false), 4000);
+      success('Quotation Accepted!', `Quotation ${quoteNum} confirmed and scheduled for activation.`);
+      setTimeout(() => setAcceptedSuccess(false), 5000);
       triggerRefresh();
+    } catch (err: unknown) {
+      error('Acceptance failed', err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setAccepting(false);
     }
@@ -57,7 +81,7 @@ export default function PortalQuotesPage() {
             <h1 className="text-2xl font-extrabold tracking-tight text-white">
               My Commercial Quotations
             </h1>
-            <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-[#151b28] border border-[#242f44] text-[#fcee21]">
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-[#151b28] border border-[#242f44] text-[#fcee21]">
               {quotes.length} Open
             </span>
           </div>
@@ -68,8 +92,8 @@ export default function PortalQuotesPage() {
       </div>
 
       {acceptedSuccess && (
-        <Alert variant="success" title="Quotation Successfully Accepted">
-          Thank you! The proposal has been confirmed and scheduled for automated billing activation.
+        <Alert variant="success" title="Quotation Successfully Accepted &amp; Confirmed">
+          Thank you! The proposal has been digitally confirmed and transitioned to active status. Your subscription contract and automated tax invoice will be generated.
         </Alert>
       )}
 
@@ -120,7 +144,7 @@ export default function PortalQuotesPage() {
                 variant="primary"
                 size="sm"
                 leftIcon={<CheckCircle className="w-3.5 h-3.5" />}
-                onClick={() => setSelectedQuote(q)}
+                onClick={() => handleOpenReview(q)}
               >
                 Review &amp; Accept
               </Button>
@@ -138,7 +162,7 @@ export default function PortalQuotesPage() {
         isOpen={!!selectedQuote}
         onClose={() => setSelectedQuote(null)}
         title={`Review Quotation ${selectedQuote?.subscriptionNumber}`}
-        description="Verify agreed scope of services and commercial payment terms before confirmation."
+        description="Verify agreed scope of services, recurring pricing, and sign digitally to activate."
         maxWidth="lg"
         footer={
           <>
@@ -155,8 +179,10 @@ export default function PortalQuotesPage() {
               size="sm"
               onClick={handleAcceptQuote}
               isLoading={accepting}
+              disabled={!agreedTerms || !signerName}
+              leftIcon={<FileCheck2 className="w-4 h-4" />}
             >
-              Accept &amp; Confirm Agreement
+              Digitally Sign &amp; Accept
             </Button>
           </>
         }
@@ -172,11 +198,48 @@ export default function PortalQuotesPage() {
               compact
             />
 
-            <div className="p-3 rounded-lg bg-[#08090d] border border-[#242f44] text-xs text-slate-300 space-y-1">
-              <span className="font-bold text-white block">Commercial Terms</span>
-              <p>• Billing recurrence: Monthly fixed subscription schedule.</p>
-              <p>• Tax compliance: 18% GST snapshot applied.</p>
-              <p>• Agreement locks upon customer confirmation.</p>
+            <div className="p-3.5 rounded-lg bg-[#08090d] border border-[#242f44] text-xs text-slate-300 space-y-1.5">
+              <span className="font-bold text-white block">Commercial Terms &amp; Scope:</span>
+              <p>• Billing cadence: Recurring /{selectedQuote.billingInterval} on standard settlement terms.</p>
+              <p>• Statutory tax compliance: 18% standard GST applied to commercial subtotal.</p>
+              <p>• Acceptance immediately binds agreement and schedules automated billing generation.</p>
+            </div>
+
+            {/* Digital Sign-off Fields */}
+            <div className="p-3.5 rounded-lg bg-[#0d111a] border border-[#242f44] space-y-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#fcee21] flex items-center gap-1.5">
+                <FileSignature className="w-3.5 h-3.5" />
+                Authorized Customer Sign-Off
+              </span>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Input
+                  label="Signatory Full Name"
+                  value={signerName}
+                  onChange={(e) => setSignerName(e.target.value)}
+                  placeholder="e.g. Maya Iyer"
+                  required
+                />
+                <Input
+                  label="Signatory Corporate Title"
+                  value={signerTitle}
+                  onChange={(e) => setSignerTitle(e.target.value)}
+                  placeholder="e.g. Chief Financial Officer"
+                  required
+                />
+              </div>
+
+              <label className="flex items-start gap-2.5 pt-1 text-xs text-slate-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={agreedTerms}
+                  onChange={(e) => setAgreedTerms(e.target.checked)}
+                  className="mt-0.5 rounded border-[#242f44] bg-[#151b28] text-[#fcee21] focus:ring-[#fcee21]"
+                />
+                <span>
+                  I confirm that I am authorized to bind the contracting customer entity to the recurring commercial terms set forth in this quotation.
+                </span>
+              </label>
             </div>
           </div>
         )}
