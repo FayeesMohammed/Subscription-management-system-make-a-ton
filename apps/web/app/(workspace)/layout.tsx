@@ -282,6 +282,11 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
           </div>
         </header>
 
+        {/* Mobile Navigation Dock - Always visible at top on mobile */}
+        <div className="md:hidden flex items-center justify-center py-2 px-3 bg-[#07080b]/95 border-b border-[#1f283d] sticky top-[57px] z-20">
+          <FloatingDockNav />
+        </div>
+
         {/* Page Content Container */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">{children}</main>
       </div>

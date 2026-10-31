@@ -21,6 +21,7 @@ import {
   Calendar,
   MessageSquare,
   Users,
+  Mail,
 } from 'lucide-react';
 import { Drawer } from '@brightloop/ui';
 import { RoleSwitcher } from '@/components/domain/RoleSwitcher';
@@ -32,7 +33,7 @@ import { useApp } from '@/lib/context';
 const PORTAL_DOCK_ITEMS: DockNavItem[] = [
   {
     id: 'overview',
-    label: 'Overview & Hub',
+    label: 'Customer Overview',
     href: '/portal/home',
     icon: Home,
     matchPrefix: ['/portal/home'],
@@ -52,6 +53,13 @@ const PORTAL_DOCK_ITEMS: DockNavItem[] = [
     matchPrefix: ['/portal/subscriptions'],
   },
   {
+    id: 'profile',
+    label: 'Company Profile & Team',
+    href: '/portal/profile',
+    icon: Users,
+    matchPrefix: ['/portal/profile'],
+  },
+  {
     id: 'quotes',
     label: 'Pending Quotes',
     href: '/portal/quotes',
@@ -59,11 +67,11 @@ const PORTAL_DOCK_ITEMS: DockNavItem[] = [
     matchPrefix: ['/portal/quotes'],
   },
   {
-    id: 'profile',
-    label: 'Company Profile',
-    href: '/portal/profile',
-    icon: Users,
-    matchPrefix: ['/portal/profile'],
+    id: 'workspace',
+    label: 'Admin Workspace',
+    href: '/dashboard',
+    icon: Mail,
+    matchPrefix: ['/dashboard'],
   },
 ];
 
@@ -182,6 +190,11 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
           </div>
         </div>
       </header>
+
+      {/* Mobile Navigation Dock - Always visible at top on mobile */}
+      <div className="md:hidden flex items-center justify-center py-2 px-3 bg-[#07080b]/95 border-b border-[#1f283d] sticky top-16 z-20">
+        <FloatingDockNav items={PORTAL_DOCK_ITEMS} />
+      </div>
 
       {/* Main Content View */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
