@@ -24,6 +24,7 @@ import {
   Bell,
   Clock,
   AlertTriangle,
+  ExternalLink,
 } from 'lucide-react';
 import { Drawer } from '@brightloop/ui';
 import { RoleSwitcher } from '@/components/domain/RoleSwitcher';
@@ -192,6 +193,27 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
         {/* Navigation items */}
         <nav className="flex-1 overflow-y-auto px-3 py-2">{renderNavLinks()}</nav>
 
+        {/* Customer Portal Preview Link & Health */}
+        <div className="p-3 border-t border-[#1f283d] bg-[#08090d] space-y-2">
+          <Link
+            href="/portal/home"
+            className="flex items-center justify-between px-3 py-2 rounded-lg bg-[#111722] hover:bg-[#1a2333] border border-[#242f44] text-xs font-semibold text-slate-200 hover:text-[#fcee21] transition-all group"
+          >
+            <div className="flex items-center gap-2">
+              <ExternalLink className="w-3.5 h-3.5 text-[#fcee21]" />
+              <span>Customer Portal Preview</span>
+            </div>
+            <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-white" />
+          </Link>
+          <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 px-1">
+            <span className="flex items-center gap-1.5 text-emerald-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              CORE HEALTH NORMAL
+            </span>
+            <span className="text-slate-500">v3.0</span>
+          </div>
+        </div>
+
         {/* User footer card */}
         <div className="border-t border-[#1f283d] p-3 bg-[#0a0d13]">
           <div className="flex items-center justify-between">
@@ -235,6 +257,14 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
 
           {/* Right Header Controls */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* System SLA Badge */}
+            <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#0d121c] border border-[#1f283d] text-[11px] font-mono text-slate-300">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span className="text-emerald-400 font-bold">SYSTEM SLA 99.98%</span>
+              <span className="text-slate-500">•</span>
+              <span className="text-slate-400">&lt;180ms Latency</span>
+            </div>
+
             {/* Alert Indicator */}
             {alertsCount > 0 && (
               <Link
