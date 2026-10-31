@@ -26,8 +26,29 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
 
-  // Liveness and Readiness Probes
+  // Root and Health Probes
   const httpAdapter = app.getHttpAdapter();
+  httpAdapter.get('/api', (req: any, res: any) => {
+    res.status(200).json({
+      name: 'Brightloop Subscription & Billing Engine API',
+      version: '2.0.0',
+      status: 'operational',
+      dashboardUi: 'http://localhost:3000',
+      endpoints: {
+        health: '/api/health/readiness',
+        auth: '/api/auth/register',
+        tenants: '/api/tenants',
+        customers: '/api/customers',
+        catalog: '/api/catalog/products',
+        subscriptions: '/api/subscriptions',
+        invoices: '/api/invoices',
+        payments: '/api/payments/attempts',
+        usage: '/api/usage/events',
+        reporting: '/api/reporting/dashboard',
+      },
+    });
+  });
+
   httpAdapter.get('/api/health/liveness', (req: any, res: any) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
   });
